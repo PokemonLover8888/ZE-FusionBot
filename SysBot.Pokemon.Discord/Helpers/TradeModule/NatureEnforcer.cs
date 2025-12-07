@@ -5,7 +5,7 @@ using System.Security.Cryptography;
 
 namespace SysBot.Pokemon.Discord.Helpers.TradeModule
 {
-    public static class ForceNatureHelper
+    public static class NatureEnforcer
     {
         /// <summary>
         /// Forces the PKM to have the desired nature (and shiny if requested), keeping IVs intact.
