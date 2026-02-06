@@ -291,6 +291,20 @@ public static class AutoLegalityWrapper
                     pk.PID = (uint)((pk.TID16 ^ pk.SID16 ^ (pk.PID & 0xFFFF) ^ desiredXor) << 16) | (pk.PID & 0xFFFF);
                     pk.RefreshChecksum();
                 }
+
+                // Force 6IV for Max Lair Pokemon (SWSH)
+                // Max Lair Pokemon are legally allowed to have 6IV (guaranteed 3+, others random)
+                const int MaxLairLocationID = 244;
+                if (pk is PK8 pk8 && pk8.MetLocation == MaxLairLocationID)
+                {
+                    pk8.IV_HP = 31;
+                    pk8.IV_ATK = 31;
+                    pk8.IV_DEF = 31;
+                    pk8.IV_SPA = 31;
+                    pk8.IV_SPD = 31;
+                    pk8.IV_SPE = 31;
+                    pk8.RefreshChecksum();
+                }
             }
 
             return pk;

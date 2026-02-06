@@ -222,6 +222,24 @@ public static class Helpers<T> where T : PKM, new()
             // Generate egg using ALM
             pkm = sav.GenerateEgg(regenTemplate, out var eggResult);
             result = eggResult.ToString();
+
+            // FIX: ALM doesn't always respect the ball from the content for eggs
+            // Manually parse and apply the ball if user specified one
+            if (pkm != null)
+            {
+                var ballLine = contentLines.FirstOrDefault(l => l.TrimStart().StartsWith("Ball:", StringComparison.OrdinalIgnoreCase));
+                if (ballLine != null)
+                {
+                    var ballName = ballLine.Split(':')[1].Trim().Replace(" ", string.Empty);
+                    var balls = GameInfo.Strings.balllist;
+                    int ballIndex = Array.FindIndex(balls, z => z.Replace(" ", string.Empty).Equals(ballName, StringComparison.OrdinalIgnoreCase));
+                    if (ballIndex > 0)
+                    {
+                        pkm.Ball = (byte)ballIndex;
+                        pkm.RefreshChecksum();
+                    }
+                }
+            }
         }
         else
         {
@@ -247,28 +265,36 @@ public static class Helpers<T> where T : PKM, new()
         }
 
         // ============================================================================
-        // MAX LAIR POKEMON MOVE POPULATION BUG WORKAROUND
+        // MAX LAIR POKEMON FIX (MOVES + 6IV)
         // ============================================================================
         // PKHeX.Core.dll (as of 01-22-2026, commit fe32739) has a bug where Max Lair
         // Pokemon from SWSH Crown Tundra do not get moves automatically populated
         // during legalization, causing them to be marked as illegal.
         //
         // This workaround manually populates moves for Max Lair encounters after
-        // generation but before validation.
+        // generation but before validation. Also forces 6IV since Max Lair Pokemon
+        // can legally have 6IV (guaranteed 3+, others random 0-31).
         // ============================================================================
         if (pkm is PK8 pk8 && !isEgg)
         {
-            const int MaxLairLocationID = 244; // Max Lair in Crown Tundra
-            bool hasNoMoves = pk8.Move1 == 0 && pk8.Move2 == 0 && pk8.Move3 == 0 && pk8.Move4 == 0;
-            bool isFromMaxLair = pk8.MetLocation == MaxLairLocationID;
+            // Force 6IV for ALL SWSH Pokemon (test)
+            pk8.IV_HP = 31;
+            pk8.IV_ATK = 31;
+            pk8.IV_DEF = 31;
+            pk8.IV_SPA = 31;
+            pk8.IV_SPD = 31;
+            pk8.IV_SPE = 31;
 
-            if (hasNoMoves && isFromMaxLair)
+            // Also fix moves for Max Lair
+            const int MaxLairLocationID = 244;
+            bool hasNoMoves = pk8.Move1 == 0 && pk8.Move2 == 0 && pk8.Move3 == 0 && pk8.Move4 == 0;
+            if (hasNoMoves && pk8.MetLocation == MaxLairLocationID)
             {
-                // Populate moves using PKHeX (not ALM)
                 pk8.SetSuggestedMoves();
                 pk8.HealPP();
-                pk8.RefreshChecksum();
             }
+
+            pk8.RefreshChecksum();
         }
         // ============================================================================
         // END OF MAX LAIR FIX
