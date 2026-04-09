@@ -213,7 +213,7 @@ public static class QueueHelper<T> where T : PKM, new()
                 footerText += $"\n{userDetailsText}";
             }
             footerText += $"\n{etaMessage}";
-            footerText += $"\nZE FusionBot {TradeBot.Version}";
+            footerText += $"\nPKM UniverseBot {TradeBot.Version}";
 
             var embedBuilder = new EmbedBuilder()
                 .WithColor(embedColor)
@@ -504,7 +504,7 @@ public static class QueueHelper<T> where T : PKM, new()
 
     private static string GetImageFolderPath()
     {
-        string baseDirectory = AppDomain.CurrentDomain.BaseDirectory;
+        string baseDirectory = Directory.GetCurrentDirectory();
         string imagesFolder = Path.Combine(baseDirectory, "Images");
 
         if (!Directory.Exists(imagesFolder))
@@ -530,71 +530,41 @@ public static class QueueHelper<T> where T : PKM, new()
     public static async Task<(string, DiscordColor)> PrepareEmbedDetails(T pk)
     {
         string embedImageUrl;
-        string speciesImageUrl;
 
-        if (pk.IsEgg)
-        {
-            string eggImageUrl = GetEggTypeImageUrl(pk);
-            speciesImageUrl = TradeExtensions<T>.PokeImg(pk, false, true, null);
-            System.Drawing.Image combinedImage = await OverlaySpeciesOnEgg(eggImageUrl, speciesImageUrl);
-            embedImageUrl = SaveImageLocally(combinedImage);
-        }
-        else
-        {
-            bool canGmax = pk is PK8 pk8 && pk8.CanGigantamax;
-            speciesImageUrl = TradeExtensions<T>.PokeImg(pk, canGmax, false, SysCord<T>.Runner.Config.Trade.TradeEmbedSettings.PreferredImageSize);
-            embedImageUrl = speciesImageUrl;
-        }
+        bool canGmax = pk is PK8 pk8g && pk8g.CanGigantamax;
+        embedImageUrl = pk.IsEgg
+            ? TradeExtensions<T>.PokeImg(pk, false, true, null)
+            : TradeExtensions<T>.PokeImg(pk, canGmax, false, SysCord<T>.Runner.Config.Trade.TradeEmbedSettings.PreferredImageSize);
 
-        var strings = GameInfo.GetStrings("en");
-        string ballName = strings.balllist[pk.Ball];
-        if (ballName.Contains("(LA)"))
+        // For Pokemon with non-default forms, try form-specific sprite FIRST
+        if (pk.Form > 0)
         {
-            ballName = "la" + ballName.Replace(" ", "").Replace("(LA)", "").ToLower();
-        }
-        else
-        {
-            ballName = ballName.Replace(" ", "").ToLower();
-        }
-
-        string ballImgUrl = $"https://raw.githubusercontent.com/Secludedly/ZE-FusionBot-Sprite-Images/main/AltBallImg/20x20/{ballName}.png";
-
-        if (Uri.TryCreate(embedImageUrl, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeFile)
-        {
-#pragma warning disable CA1416 // Validate platform compatibility
-            using var localImage = await Task.Run(() => System.Drawing.Image.FromFile(uri.LocalPath));
-#pragma warning restore CA1416 // Validate platform compatibility
-            using var ballImage = await LoadImageFromUrl(ballImgUrl);
-            if (ballImage != null)
+            try
             {
-#pragma warning disable CA1416 // Validate platform compatibility
-                using (var graphics = Graphics.FromImage(localImage))
+                string formUrl = $"https://creator.pkm-universe.com/assets/sprites/{pk.Species}-{pk.Form}-v2.png";
+                using var checkClient = new HttpClient();
+                var formReq = new HttpRequestMessage(HttpMethod.Head, formUrl);
+                var formResp = await checkClient.SendAsync(formReq);
+                if (formResp.IsSuccessStatusCode)
                 {
-                    var ballPosition = new Point(localImage.Width - ballImage.Width, localImage.Height - ballImage.Height);
-                    graphics.DrawImage(ballImage, ballPosition);
+                    embedImageUrl = formUrl;
                 }
-#pragma warning restore CA1416 // Validate platform compatibility
-                embedImageUrl = SaveImageLocally(localImage);
             }
+            catch { }
         }
-        else
-        {
-            (System.Drawing.Image? finalCombinedImage, bool ballImageLoaded) = await OverlayBallOnSpecies(speciesImageUrl, ballImgUrl);
-            if (finalCombinedImage != null)
-            {
-                embedImageUrl = SaveImageLocally(finalCombinedImage);
-            }
-            else
-            {
-                // Fall back to species image if overlay failed
-                embedImageUrl = speciesImageUrl;
-            }
 
-            if (!ballImageLoaded)
+        // Validate sprite — if ZE-FusionBot repo returns a placeholder (<5KB), fall back
+        try
+        {
+            using var checkClient2 = new HttpClient();
+            var headReq = new HttpRequestMessage(HttpMethod.Head, embedImageUrl);
+            var headResp = await checkClient2.SendAsync(headReq);
+            if (!headResp.IsSuccessStatusCode || (headResp.Content.Headers.ContentLength.HasValue && headResp.Content.Headers.ContentLength.Value < 5000))
             {
-                Console.WriteLine($"Ball image could not be loaded: {ballImgUrl}");
+                embedImageUrl = $"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/home/{pk.Species}.png";
             }
         }
+        catch { }
 
         (int R, int G, int B) = await GetDominantColorAsync(embedImageUrl);
         return (embedImageUrl, new DiscordColor(R, G, B));
@@ -679,30 +649,32 @@ public static class QueueHelper<T> where T : PKM, new()
 
     private static async Task<System.Drawing.Image?> LoadImageFromUrl(string url)
     {
-        using HttpClient client = new();
-        HttpResponseMessage response = await client.GetAsync(url);
-        if (!response.IsSuccessStatusCode)
-        {
-            Console.WriteLine($"Failed to load image from {url}. Status code: {response.StatusCode}");
-            return null;
-        }
-
-        Stream stream = await response.Content.ReadAsStreamAsync();
-        if (stream == null || stream.Length == 0)
-        {
-            Console.WriteLine($"No data or empty stream received from {url}");
-            return null;
-        }
-
         try
         {
-#pragma warning disable CA1416 // Validate platform compatibility
-            return System.Drawing.Image.FromStream(stream);
-#pragma warning restore CA1416 // Validate platform compatibility
+            using HttpClient client = new();
+            HttpResponseMessage response = await client.GetAsync(url);
+            if (!response.IsSuccessStatusCode)
+            {
+                Console.WriteLine($"Failed to load image from {url}. Status code: {response.StatusCode}");
+                return null;
+            }
+
+            byte[] imageBytes = await response.Content.ReadAsByteArrayAsync();
+            if (imageBytes == null || imageBytes.Length == 0)
+            {
+                Console.WriteLine($"No data received from {url}");
+                return null;
+            }
+
+            // Copy to MemoryStream so the Image doesn't depend on the HttpClient/response stream
+            var ms = new MemoryStream(imageBytes);
+#pragma warning disable CA1416
+            return System.Drawing.Image.FromStream(ms);
+#pragma warning restore CA1416
         }
-        catch (ArgumentException ex)
+        catch (Exception ex)
         {
-            Console.WriteLine($"Failed to create image from stream. URL: {url}, Exception: {ex}");
+            Console.WriteLine($"Failed to load image from {url}: {ex.Message}");
             return null;
         }
     }

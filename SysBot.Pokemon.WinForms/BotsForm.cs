@@ -4,7 +4,6 @@ using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
 using SysBot.Base;
-using SysBot.Pokemon;
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -18,7 +17,7 @@ namespace SysBot.Pokemon.WinForms
     {
         private bool _isInitializing = false;
 
-        public PictureBox ImageOverlay = null!;
+        public PictureBox ImageOverlay;
         public FlowLayoutPanel BotPanel => _FLP_Bots;
 
         public Button StartButton => _B_Start;
@@ -26,9 +25,6 @@ namespace SysBot.Pokemon.WinForms
         public Button RebootStopButton => _B_RebootStop;
         public Button UpdateButton => _updater;
         public Button AddBotButton => _B_New;
-        public Button PKHeXButton => _B_PKHeX;
-        public Button SwitchRemoteButton => _B_SwitchRemote;
-        public Button SysDVRButton => _B_SysDVR;
 
         public TextBox IPBox => _TB_IP;
         public NumericUpDown PortBox => _NUD_Port;
@@ -38,30 +34,24 @@ namespace SysBot.Pokemon.WinForms
 
         private readonly List<BotController> BotControls = new();
 
-        private FancyButton _B_Start = null!;
-        private FancyButton _B_Stop = null!;
-        private FancyButton _B_RebootStop = null!;
-        private FancyButton _updater = null!;
-        private FancyButton _B_New = null!;
-        private FancyButton _B_Reload = null!;
-        private FancyButton _B_PKHeX = null!;
-        private FancyButton _B_SwitchRemote = null!;
-        private FancyButton _B_SysDVR = null!;
-        private ToolTip _toolTips = null!;
+        private FancyButton _B_Start;
+        private FancyButton _B_Stop;
+        private FancyButton _B_RebootStop;
+        private FancyButton _updater;
+        private FancyButton _B_New;
+        private FancyButton _B_Reload;
+        private ToolTip _toolTips;
 
-        private TextBox _TB_IP = null!;
-        private NumericUpDown _NUD_Port = null!;
 
-        private ComboBox _CB_Protocol = null!;
-        private ComboBox _CB_Routine = null!;
-        private ComboBox _CB_GameMode = null!;
+        private TextBox _TB_IP;
+        private NumericUpDown _NUD_Port;
 
-        private FlowLayoutPanel _FLP_Bots = null!;
-#pragma warning disable CS0169 // Field is never used
-        private PictureBox? _pictureBox1;
-#pragma warning restore CS0169
-        private PictureBox _updateNotificationLabel = null!;
-        private Label _updateVersionLabel = null!;
+        private ComboBox _CB_Protocol;
+        private ComboBox _CB_Routine;
+        private ComboBox _CB_GameMode;
+
+        private FlowLayoutPanel _FLP_Bots;
+        private PictureBox _pictureBox1;
 
         public BotsForm()
         {
@@ -130,199 +120,9 @@ namespace SysBot.Pokemon.WinForms
             _toolTips.AutoPopDelay = 2500;      // How long it stays visible
             _toolTips.InitialDelay = 2000;       // Delay before it shows up
             _toolTips.ReshowDelay = 1000;        // Delay between tooltips
-            _toolTips.ShowAlways = true;        // Show even if the form isn't active
+            _toolTips.ShowAlways = true;        // Show even if the form isn’t active
 
             _B_Reload.Click += (_, _) => RestartApplication();
-
-            _B_PKHeX = new FancyButton { Text = "", Location = new Point(610, 7), Size = new Size(32, 32) };
-            _B_PKHeX.GlowColor = Color.White;
-
-            // Try multiple paths to find the PKHeX icon
-            try
-            {
-                string[] possiblePaths = new[]
-                {
-                    Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Resources", "pkhex_icon.png"),
-                    "C:\\Users\\Admin\\source\\repos\\PKHeX\\icon.png",
-                    "C:\\Users\\Admin\\source\\repos\\ZE-FusionBot\\SysBot.Pokemon.WinForms\\Resources\\pkhex_icon.png"
-                };
-
-                foreach (var iconPath in possiblePaths)
-                {
-                    if (File.Exists(iconPath))
-                    {
-                        var img = Image.FromFile(iconPath);
-                        _B_PKHeX.Image = img;
-                        _B_PKHeX.BackgroundImage = img;  // Set both properties
-                        _B_PKHeX.BackgroundImageLayout = ImageLayout.Zoom;
-                        System.Diagnostics.Debug.WriteLine($"PKHeX icon loaded from: {iconPath}");
-                        break;
-                    }
-                }
-
-                // Debug: Check if image was loaded
-                if (_B_PKHeX.BackgroundImage == null)
-                {
-                    System.Diagnostics.Debug.WriteLine("PKHeX icon not found in any path");
-                    _B_PKHeX.Text = "PKH";
-                }
-            }
-            catch (Exception ex)
-            {
-                // Fallback to text if image loading fails
-                _B_PKHeX.Text = "PKH";
-                System.Diagnostics.Debug.WriteLine($"Failed to load PKHeX icon: {ex.Message}");
-            }
-
-            _toolTips.SetToolTip(_B_PKHeX, "Launch PKHeX from configured folder.");
-            _toolTips.AutoPopDelay = 2500;
-            _toolTips.InitialDelay = 2000;
-            _toolTips.ReshowDelay = 1000;
-            _toolTips.ShowAlways = true;
-
-            _B_SwitchRemote = new FancyButton { Text = "", Location = new Point(640, 7), Size = new Size(32, 32) };
-            _B_SwitchRemote.GlowColor = Color.White;
-
-            // Try multiple paths to find the SwitchRemote icon
-            try
-            {
-                string[] possiblePaths = new[]
-                {
-                    Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Resources", "switchremote_icon.png"),
-                    "C:\\Users\\Admin\\source\\repos\\SwitchRemoteForPC_icon.png",
-                    "C:\\Users\\Admin\\source\\repos\\ZE-FusionBot\\SysBot.Pokemon.WinForms\\Resources\\switchremote_icon.png"
-                };
-
-                foreach (var iconPath in possiblePaths)
-                {
-                    if (File.Exists(iconPath))
-                    {
-                        var img = Image.FromFile(iconPath);
-                        _B_SwitchRemote.Image = img;
-                        _B_SwitchRemote.BackgroundImage = img;
-                        _B_SwitchRemote.BackgroundImageLayout = ImageLayout.Zoom;
-                        System.Diagnostics.Debug.WriteLine($"SwitchRemote icon loaded from: {iconPath}");
-                        break;
-                    }
-                }
-
-                // Debug: Check if image was loaded
-                if (_B_SwitchRemote.BackgroundImage == null)
-                {
-                    System.Diagnostics.Debug.WriteLine("SwitchRemote icon not found in any path");
-                    _B_SwitchRemote.Text = "SW";
-                }
-            }
-            catch (Exception ex)
-            {
-                // Fallback to text if image loading fails
-                _B_SwitchRemote.Text = "SW";
-                System.Diagnostics.Debug.WriteLine($"Failed to load SwitchRemote icon: {ex.Message}");
-            }
-
-            _toolTips.SetToolTip(_B_SwitchRemote, "Launch Switch Remote for PC from configured folder.");
-            _toolTips.AutoPopDelay = 2500;
-            _toolTips.InitialDelay = 2000;
-            _toolTips.ReshowDelay = 1000;
-            _toolTips.ShowAlways = true;
-
-            _B_SysDVR = new FancyButton { Text = "", Location = new Point(670, 7), Size = new Size(32, 32) };
-            _B_SysDVR.GlowColor = Color.White;
-
-            // Try multiple paths to find the SysDVR icon
-            try
-            {
-                string[] possiblePaths = new[]
-                {
-                    Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Resources", "sysdvr_icon.png"),
-                    "C:\\Users\\Admin\\source\\repos\\SysDVR_icon.png",
-                    "C:\\Users\\Admin\\source\\repos\\ZE-FusionBot\\SysBot.Pokemon.WinForms\\Resources\\sysdvr_icon.png"
-                };
-
-                foreach (var iconPath in possiblePaths)
-                {
-                    if (File.Exists(iconPath))
-                    {
-                        var img = Image.FromFile(iconPath);
-                        _B_SysDVR.Image = img;
-                        _B_SysDVR.BackgroundImage = img;
-                        _B_SysDVR.BackgroundImageLayout = ImageLayout.Zoom;
-                        System.Diagnostics.Debug.WriteLine($"SysDVR icon loaded from: {iconPath}");
-                        break;
-                    }
-                }
-
-                // Debug: Check if image was loaded
-                if (_B_SysDVR.BackgroundImage == null)
-                {
-                    System.Diagnostics.Debug.WriteLine("SysDVR icon not found in any path");
-                    _B_SysDVR.Text = "DVR";
-                }
-            }
-            catch (Exception ex)
-            {
-                // Fallback to text if image loading fails
-                _B_SysDVR.Text = "DVR";
-                System.Diagnostics.Debug.WriteLine($"Failed to load SysDVR icon: {ex.Message}");
-            }
-
-            _toolTips.SetToolTip(_B_SysDVR, "Launch SysDVR (requires SysDVR.bat in FusionBot folder).");
-            _toolTips.AutoPopDelay = 2500;
-            _toolTips.InitialDelay = 2000;
-            _toolTips.ReshowDelay = 1000;
-            _toolTips.ShowAlways = true;
-
-            // Update Notification Image
-            _updateNotificationLabel = new PictureBox
-            {
-                SizeMode = PictureBoxSizeMode.AutoSize,
-                Size = new Size(132, 23),
-                Location = new Point(574, 59),
-                BackColor = Color.Transparent,
-                Visible = false,
-                Cursor = Cursors.Hand
-            };
-
-            // Load the update notification image from embedded resources
-            try
-            {
-                var assembly = System.Reflection.Assembly.GetExecutingAssembly();
-                var resourceName = "SysBot.Pokemon.WinForms.Resources.new-release-update.png";
-                using (var stream = assembly.GetManifestResourceStream(resourceName))
-                {
-                    if (stream != null)
-                    {
-                        _updateNotificationLabel.Image = Image.FromStream(stream);
-                        System.Diagnostics.Debug.WriteLine("Update notification image loaded from embedded resources");
-                    }
-                    else
-                    {
-                        System.Diagnostics.Debug.WriteLine("Update notification image resource not found");
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Failed to load update notification image: {ex.Message}");
-            }
-
-            _updateNotificationLabel.Click += (s, e) => _updater.PerformClick();
-            _toolTips.SetToolTip(_updateNotificationLabel, "Click to view update details and download the latest version.");
-
-            // Update Version Label (displays version number above the image)
-            _updateVersionLabel = new Label
-            {
-                AutoSize = true,
-                Location = new Point(576, 44),
-                Font = new Font("Segoe UI", 7F, FontStyle.Bold),
-                ForeColor = Color.White,
-                BackColor = Color.Transparent,
-                Visible = false,
-                Text = "",
-                Cursor = Cursors.Hand
-            };
-            _updateVersionLabel.Click += (s, e) => _updater.PerformClick();
-            _toolTips.SetToolTip(_updateVersionLabel, "Click to view update details and download the latest version.");
 
             // Colors for boxes and controls
             Color darkBG = Color.FromArgb(20, 19, 57);
@@ -356,9 +156,9 @@ namespace SysBot.Pokemon.WinForms
             _CB_GameMode.DrawItem += (s, e) =>
             {
                 e.DrawBackground();
-                if (s is not ComboBox cb) return;
+                var cb = (ComboBox)s;
 
-                string text = (e.Index >= 0) ? cb.Items[e.Index]?.ToString() ?? "Game" : "Game"; // ← Placeholder
+                string text = (e.Index >= 0) ? cb.Items[e.Index].ToString() : "Game"; // ← Placeholder
                 using var brush = new SolidBrush(cb.ForeColor);
                 e.Graphics.DrawString(text, cb.Font, brush, e.Bounds);
             };
@@ -379,57 +179,71 @@ namespace SysBot.Pokemon.WinForms
                 Margin = new Padding(0)
             };
 
-            this.BackColor = Color.FromArgb(28, 27, 65);
+            this.BackColor = Color.FromArgb(28, 27, 65); 
 
                 Controls.AddRange(new Control[] {
                 _B_Start, _B_Stop, _B_RebootStop, _updater, _B_New,
-                _B_Reload, _B_PKHeX, _B_SwitchRemote, _B_SysDVR, _TB_IP, _NUD_Port, _CB_Protocol, _CB_Routine, _CB_GameMode,
-                _FLP_Bots, _updateNotificationLabel, _updateVersionLabel
+                _B_Reload, _TB_IP, _NUD_Port, _CB_Protocol, _CB_Routine, _CB_GameMode,
+                _FLP_Bots
             });
 
             Text = "Bots";
             Size = new Size(722, 53);
         }
 
-        private void CB_GameMode_SelectedIndexChanged(object? sender, EventArgs e)
+        private void CB_GameMode_SelectedIndexChanged(object sender, EventArgs e)
         {
             if (_isInitializing)
                 return; // Don't do anything if we're still initializing
 
             if (_CB_GameMode.SelectedIndex == -1)
                 return;
-
             var selectedMode = _CB_GameMode.SelectedItem?.ToString();
-            ProgramMode newMode = selectedMode switch
+            int modeValue = selectedMode switch
             {
-                "SWSH" => ProgramMode.SWSH,
-                "BDSP" => ProgramMode.BDSP,
-                "PLA" => ProgramMode.LA,
-                "SV" => ProgramMode.SV,
-                "LGPE" => ProgramMode.LGPE,
-                "PLZA" => ProgramMode.PLZA,
-                _ => ProgramMode.SWSH
+                "SWSH" => 1,
+                "BDSP" => 2,
+                "PLA" => 3,
+                "SV" => 4,
+                "LGPE" => 5,
+                "PLZA" => 6,
+                _ => 1
             };
+
+            string exePath = System.Diagnostics.Process.GetCurrentProcess().MainModule!.FileName!;
+            string exeDir = Path.GetDirectoryName(exePath)!;
+            string configPath = Path.Combine(exeDir, "config.json");
+
+            if (!File.Exists(configPath))
+            {
+                MessageBox.Show($"Config file not found at: {configPath}");
+                return;
+            }
 
             try
             {
-                // Use Main instance to switch mode live
-                if (Main.Instance != null)
+                var jsonString = File.ReadAllText(configPath);
+                using var doc = JsonDocument.Parse(jsonString);
+                var root = doc.RootElement.Clone();
+
+                using var stream = File.Create(configPath);
+                using var writer = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = true });
+
+                writer.WriteStartObject();
+                foreach (var prop in root.EnumerateObject())
                 {
-                    Main.Instance.SwitchGameMode(newMode);
+                    if (prop.NameEquals("Mode"))
+                        writer.WriteNumber("Mode", modeValue);
+                    else
+                        prop.WriteTo(writer);
                 }
-                else
-                {
-                    MessageBox.Show(
-                        "Main form instance not available. Please restart the program.",
-                        "Mode Switch Error",
-                        MessageBoxButtons.OK,
-                        MessageBoxIcon.Error);
-                }
+                writer.WriteEndObject();
+
+                MessageBox.Show($"Game environment updated to {selectedMode} (Mode: {modeValue}).\nRestart program or hit the RELOAD button");
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Failed to switch game mode: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show("Failed to update config: " + ex.Message);
             }
         }
 
@@ -573,7 +387,9 @@ namespace SysBot.Pokemon.WinForms
 
             cb.DrawItem += (s, e) =>
             {
-                if (s is not ComboBox combo) return;
+                if (e.Index < 0) return;
+
+                ComboBox combo = (ComboBox)s;
                 e.DrawBackground();
 
                 // darker shade when selected
@@ -584,38 +400,10 @@ namespace SysBot.Pokemon.WinForms
                 using (SolidBrush bg = new SolidBrush(bgColor))
                     e.Graphics.FillRectangle(bg, e.Bounds);
 
-                string text = combo.GetItemText(combo.Items[e.Index]) ?? string.Empty;
+                string text = combo.GetItemText(combo.Items[e.Index]);
                 using (SolidBrush brush = new SolidBrush(whiteText))
                     e.Graphics.DrawString(text, combo.Font, brush, e.Bounds);
             };
-        }
-
-        /// <summary>
-        /// Shows or hides the update notification image with the specified version.
-        /// </summary>
-        /// <param name="isUpdateAvailable">Whether an update is available</param>
-        /// <param name="newVersion">The new version string (e.g., "v7.3.9")</param>
-        public void SetUpdateNotification(bool isUpdateAvailable, string newVersion = "")
-        {
-            if (InvokeRequired)
-            {
-                BeginInvoke(new Action(() => SetUpdateNotification(isUpdateAvailable, newVersion)));
-                return;
-            }
-
-            if (isUpdateAvailable && !string.IsNullOrWhiteSpace(newVersion))
-            {
-                _updateVersionLabel.Text = $"Update now to {newVersion}";
-                _updateVersionLabel.Visible = true;
-                _updateVersionLabel.BringToFront();
-                _updateNotificationLabel.Visible = true;
-                _updateNotificationLabel.BringToFront();
-            }
-            else
-            {
-                _updateVersionLabel.Visible = false;
-                _updateNotificationLabel.Visible = false;
-            }
         }
     }
 }

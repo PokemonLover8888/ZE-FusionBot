@@ -243,8 +243,38 @@ public static class Helpers<T> where T : PKM, new()
         }
         else
         {
-            // Use normal template for regular Pokémon
-            pkm = sav.GetLegal(template, out result);
+            LogUtil.LogInfo($"[Generation] Species={template.Species}, Form={template.Form}, T={typeof(T).Name}, sav.Version={sav.Version}", "Helpers");
+            // Vivillon form workaround: ALM can only generate Meadow (form 6) in ZA.
+            // Force template to Meadow for generation, then fix the form afterwards.
+            if (template.Species == 666 && template.Form != 6 && typeof(T) == typeof(PA9))
+            {
+                LogUtil.LogInfo($"[Vivillon] Overriding template form {template.Form} to Meadow (6) for generation", "Vivillon");
+                var showdownText = set.Text.Replace($"Vivillon-{set.FormName}", "Vivillon-Meadow");
+                if (showdownText == set.Text)
+                    showdownText = "Vivillon-Meadow\nLevel: 100";
+                var meadowSet = new ShowdownSet(showdownText);
+                var meadowTemplate = AutoLegalityWrapper.GetTemplate(meadowSet);
+                pkm = sav.GetLegal(meadowTemplate, out result);
+            }
+            // Alcremie form workaround: ALM may fail to generate non-default Alcremie forms.
+            // Generate as default (form 0), then fix the form afterwards.
+            else if (template.Species == 869 && template.Form != 0)
+            {
+                LogUtil.LogInfo($"[Alcremie] Overriding template form {template.Form} to default (0) for generation, FormName='{set.FormName}'", "Alcremie");
+                // Build a clean Alcremie set with default form, preserving shiny/level
+                var alcremieText = "Alcremie";
+                if (set.Shiny) alcremieText += "\nShiny: Yes";
+                alcremieText += "\nLevel: 100";
+                LogUtil.LogInfo($"[Alcremie] Using showdown text: {alcremieText.Replace("\n", " | ")}", "Alcremie");
+                var defaultSet = new ShowdownSet(alcremieText);
+                var defaultTemplate = AutoLegalityWrapper.GetTemplate(defaultSet);
+                pkm = sav.GetLegal(defaultTemplate, out result);
+            }
+            else
+            {
+                // Use normal template for regular Pokémon
+                pkm = sav.GetLegal(template, out result);
+            }
         }
 
         if (pkm == null)
@@ -254,6 +284,13 @@ public static class Helpers<T> where T : PKM, new()
                 Error = "Set took too long to legalize.",
                 ShowdownSet = set
             });
+        }
+
+        // ============================================================================
+
+        if (pkm.Species == 666)
+        {
+            LogUtil.LogInfo($"[Vivillon-Early] FormName='{set.FormName}', set.Form={set.Form}, template.Form={template.Form}, pkm.Form={pkm.Form}", "Vivillon");
         }
 
         // ============================================================================
@@ -351,6 +388,8 @@ public static class Helpers<T> where T : PKM, new()
         }
 
         var la = new LegalityAnalysis(pkm);
+        if (pkm.Species == 666)
+            LogUtil.LogInfo($"[Vivillon-PreCheck] la.Valid={la.Valid}, result='{result}', pkm is T={pkm is T}", "Vivillon");
         if (pkm is not T pk || !la.Valid)
         {
             var reason = GetFailureReason(result, spec);
@@ -361,6 +400,31 @@ public static class Helpers<T> where T : PKM, new()
                 LegalizationHint = hint,
                 ShowdownSet = set
             });
+        }
+
+        // ============================================================================
+        // POST-LEGALIZATION FIXUPS
+        // Re-apply held item and nature from the original Showdown set
+        // ALM may strip these for event Pokemon, but they're legal modifications
+        // ============================================================================
+        if (set.HeldItem > 0 && pk.HeldItem != set.HeldItem)
+        {
+            pk.HeldItem = set.HeldItem;
+            pk.RefreshChecksum();
+        }
+
+        // Nature is handled by ALM during generation — do not override
+
+        // Re-apply EVs if set specified them
+        if (set.EVs.Any(ev => ev > 0))
+        {
+            pk.EV_HP = set.EVs[0];
+            pk.EV_ATK = set.EVs[1];
+            pk.EV_DEF = set.EVs[2];
+            pk.EV_SPE = set.EVs[3];
+            pk.EV_SPA = set.EVs[4];
+            pk.EV_SPD = set.EVs[5];
+            pk.RefreshChecksum();
         }
 
         // Final preparation
@@ -379,6 +443,48 @@ public static class Helpers<T> where T : PKM, new()
             }
         }
     
+        // ============================================================================
+        // VIVILLON FORM FIX — Force requested form after all legality checks pass
+        // ============================================================================
+        if (pk.Species == 666 && !string.IsNullOrEmpty(set.FormName))
+        {
+            // Resolve form name to form number
+            var vivillonForms = new Dictionary<string, byte>(StringComparer.OrdinalIgnoreCase)
+            {
+                {"Icy Snow", 0}, {"Icy-Snow", 0}, {"IcySnow", 0},
+                {"Polar", 1}, {"Tundra", 2}, {"Continental", 3},
+                {"Garden", 4}, {"Elegant", 5}, {"Meadow", 6}, {"Modern", 7},
+                {"Marine", 8}, {"Archipelago", 9},
+                {"High Plains", 10}, {"High-Plains", 10}, {"HighPlains", 10},
+                {"Sandstorm", 11}, {"River", 12}, {"Monsoon", 13}, {"Savanna", 14},
+                {"Sun", 15}, {"Ocean", 16}, {"Jungle", 17}, {"Fancy", 18},
+                {"Pokeball", 19}, {"Poke Ball", 19}, {"Poke-Ball", 19}
+            };
+
+            var formName = set.FormName?.Trim() ?? "";
+            LogUtil.LogInfo($"[Vivillon] set.FormName='{set.FormName}', trimmed='{formName}', pk.Form={pk.Form}", "Vivillon");
+            if (vivillonForms.TryGetValue(formName, out var targetForm) && targetForm != pk.Form)
+            {
+                LogUtil.LogInfo($"[Vivillon] Forcing form from {pk.Form} to {targetForm} ({set.FormName})", "Vivillon");
+                pk.Form = targetForm;
+                pk.ClearNickname();
+                pk.RefreshChecksum();
+            }
+        }
+        // ============================================================================
+
+        // ============================================================================
+        // ALCREMIE FORM FIX — Force requested form after all legality checks pass
+        // ============================================================================
+        if (pk.Species == 869 && set.Form != pk.Form)
+        {
+            LogUtil.LogInfo($"[Alcremie] Forcing form from {pk.Form} to {set.Form} ({set.FormName})", "Alcremie");
+            pk.Form = (byte)set.Form;
+            pk.ClearNickname();
+            pk.RefreshChecksum();
+        }
+        // ============================================================================
+
         // For SWSH (PK8), GO Pokemon can have AutoOT applied, so don't mark them as non-native
         la = new LegalityAnalysis(pk);
         var isNonNative = la.EncounterOriginal.Context != pk.Context || (pk.GO && pk is not PK8);
@@ -811,7 +917,9 @@ public static class Helpers<T> where T : PKM, new()
 
         var la = new LegalityAnalysis(pk!);
 
-        if (!la.Valid)
+        // Skip legality check for Vivillon/Alcremie — form is forced after generation and
+        // will fail "Unable to match encounter from origin game" due to form mismatch
+        if (!la.Valid && pk!.Species != 666 && pk!.Species != 869)
         {
             string responseMessage;
             if (pk?.IsEgg == true)

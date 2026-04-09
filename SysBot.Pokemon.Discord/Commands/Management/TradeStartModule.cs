@@ -145,7 +145,38 @@ public class TradeStartModule<T> : ModuleBase<SocketCommandContext> where T : PK
                     _ => TradeExtensions<T>.PokeImg(detail.TradeData!, false, true)
                 };
 
-            var (r, g, b) = await GetDominantColorAsync(embedImageUrl);
+            // For Pokemon with non-default forms, try form-specific sprite FIRST
+            if (!detail.IsMysteryEgg && detail.Type is not (PokeTradeType.Clone or PokeTradeType.Dump or PokeTradeType.FixOT or PokeTradeType.Seed))
+            {
+                var pk = detail.TradeData!;
+                if (pk.Form > 0)
+                {
+                    try
+                    {
+                        string formUrl = $"https://creator.pkm-universe.com/assets/sprites/{pk.Species}-{pk.Form}-v2.png";
+                        using var formClient = new HttpClient();
+                        var formResp = await formClient.SendAsync(new HttpRequestMessage(HttpMethod.Head, formUrl));
+                        if (formResp.IsSuccessStatusCode)
+                            embedImageUrl = formUrl;
+                    }
+                    catch { }
+                }
+
+                // Validate sprite — fall back if placeholder (<5KB)
+                try
+                {
+                    using var checkClient = new HttpClient();
+                    var headResp = await checkClient.SendAsync(new HttpRequestMessage(HttpMethod.Head, embedImageUrl));
+                    if (!headResp.IsSuccessStatusCode || (headResp.Content.Headers.ContentLength.HasValue && headResp.Content.Headers.ContentLength.Value < 5000))
+                    {
+                        embedImageUrl = $"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/home/{pk.Species}.png";
+                    }
+                }
+                catch { }
+            }
+
+            int r = 128, g = 128, b = 128;
+            try { (r, g, b) = await GetDominantColorAsync(embedImageUrl); } catch { }
 
             string footerText =
                 detail.Type is PokeTradeType.Clone or PokeTradeType.Dump or PokeTradeType.Seed or PokeTradeType.FixOT

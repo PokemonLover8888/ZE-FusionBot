@@ -5,8 +5,8 @@
     <TargetFramework>net10.0-windows</TargetFramework>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <UseWindowsForms>true</UseWindowsForms>
-    <AssemblyName>ZE_FusionBot</AssemblyName>
-    <SelfContained>false</SelfContained>
+    <AssemblyName>PKM-Universe Bot</AssemblyName>
+    <SelfContained>true</SelfContained>
     <PublishSingleFile>true</PublishSingleFile>
     <DebugType>pdbonly</DebugType>
   </PropertyGroup>
@@ -61,7 +61,6 @@
     <EmbeddedResource Include="Resources\LeftJoyCon.png" />
     <EmbeddedResource Include="Resources\lgpe_mode_image.png" />
     <EmbeddedResource Include="Resources\lgpe_mode_upper.png" />
-    <EmbeddedResource Include="Resources\new-release-update.png" />
     <EmbeddedResource Include="Resources\pla_mode_image.png" />
     <EmbeddedResource Include="Resources\pla_mode_upper.png" />
     <EmbeddedResource Include="Resources\plza_mode_upper.png" />
@@ -91,6 +90,9 @@
   <ItemGroup>
     <Reference Include="PKHeX.Core">
       <HintPath>..\SysBot.Pokemon\deps\PKHeX.Core.dll</HintPath>
+    </Reference>
+    <Reference Include="PKHeX.Core.AutoMod">
+      <HintPath>..\SysBot.Pokemon\deps\PKHeX.Core.AutoMod.dll</HintPath>
     </Reference>
     <Reference Include="PKHeX.Drawing">
       <HintPath>deps\PKHeX.Drawing.dll</HintPath>

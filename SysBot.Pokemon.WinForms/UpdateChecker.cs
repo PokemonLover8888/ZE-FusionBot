@@ -11,7 +11,7 @@ namespace SysBot.Pokemon.WinForms
     public class UpdateChecker
     {
         private const string RepositoryOwner = "Secludedly";
-        private const string RepositoryName = "ZE-FusionBot";
+        private const string RepositoryName = "PKM-Universe-Bot";
 
         // Reuse HttpClient for better performance and socket management
         private static readonly HttpClient _httpClient = new()
@@ -21,7 +21,7 @@ namespace SysBot.Pokemon.WinForms
 
         static UpdateChecker()
         {
-            _httpClient.DefaultRequestHeaders.Add("User-Agent", "ZE-FusionBot");
+            _httpClient.DefaultRequestHeaders.Add("User-Agent", "PKM-Universe-Bot");
         }
 
         public static async Task<(bool UpdateAvailable, bool UpdateRequired, string NewVersion)> CheckForUpdatesAsync(bool forceShow = false, bool showDialog = true)
@@ -70,45 +70,15 @@ namespace SysBot.Pokemon.WinForms
                 {
                     string errorContent = await response.Content.ReadAsStringAsync();
                     Console.WriteLine($"GitHub API Error: {response.StatusCode} - {errorContent}");
-
-                    // Provide more helpful error messages
-                    if (response.StatusCode == System.Net.HttpStatusCode.Forbidden)
-                    {
-                        Console.WriteLine("GitHub API rate limit may have been exceeded. Try again later.");
-                    }
-                    else if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
-                    {
-                        Console.WriteLine($"Repository {RepositoryOwner}/{RepositoryName} or latest release not found.");
-                    }
-
                     return null;
                 }
 
                 string jsonContent = await response.Content.ReadAsStringAsync();
-                var releaseInfo = JsonConvert.DeserializeObject<ReleaseInfo>(jsonContent);
-
-                if (releaseInfo != null)
-                {
-                    Console.WriteLine($"Successfully fetched release info: Version {releaseInfo.TagName}");
-                }
-
-                return releaseInfo;
-            }
-            catch (HttpRequestException ex)
-            {
-                Console.WriteLine($"Network error fetching release info: {ex.Message}");
-                Console.WriteLine("Please check your internet connection and try again.");
-                return null;
-            }
-            catch (TaskCanceledException ex)
-            {
-                Console.WriteLine($"Request timeout fetching release info: {ex.Message}");
-                Console.WriteLine("The request took too long. Please try again.");
-                return null;
+                return JsonConvert.DeserializeObject<ReleaseInfo>(jsonContent);
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Unexpected error fetching release info: {ex.Message}");
+                Console.WriteLine($"Error fetching release info: {ex.Message}");
                 return null;
             }
         }

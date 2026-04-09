@@ -31,15 +31,15 @@ namespace SysBot.Pokemon.WinForms
     public sealed partial class Main : Form
     {
         // Currently active child form
-        private Form? activeForm = null;
+        private Form activeForm = null;
 
         // Current running environment
-        private IPokeBotRunner RunningEnvironment { get; set; } = null!;
+        private IPokeBotRunner RunningEnvironment { get; set; }
 
         // Program configuration
         [Browsable(false)]
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)] // Do not serialize in the designer
-        public static ProgramConfig Config { get; set; } = new();
+        public static ProgramConfig Config { get; set; }
 
         // Static properties for update state
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)] // Do not serialize in the designer
@@ -53,18 +53,16 @@ namespace SysBot.Pokemon.WinForms
         internal bool hasUpdate = false;
 
         // Currently active button in the left panel, for setting Bots as default
-        private IconButton currentBtn = null!;
+        private IconButton currentBtn;
 
-        private Panel leftBorderBtn = null!;
+        private Panel leftBorderBtn;
         private Dictionary<IconButton, Timer> hoverTimers = new();
-
-#pragma warning disable CS0414 // Field is assigned but never used
-        private bool _isFormLoading = true;               // Flag to indicate if the form is still loading (reserved for future use)
-#pragma warning restore CS0414                            // Flag to indicate if the form is still loading
+  
+        private bool _isFormLoading = true;               // Flag to indicate if the form is still loading
         private readonly List<PokeBotState> Bots = new(); // List of bots created in the program
-        private BotsForm _botsForm = null!;                       // BotsForm instance to manage bot controls
-        private LogsForm _logsForm = null!;                       // LogsForm instance to display logs
-        private HubForm _hubForm = null!;                       // HubForm instance to manage hub settings
+        private BotsForm _botsForm;                       // BotsForm instance to manage bot controls
+        private LogsForm _logsForm;                       // LogsForm instance to display logs
+        private HubForm _hubForm;                         // HubForm instance to manage hub settings
 
         public Panel PanelLeftSide => panelLeftSide;      // Expose panelLeftSide for other forms
 
@@ -76,7 +74,15 @@ namespace SysBot.Pokemon.WinForms
         private readonly Random rng = new();
         private readonly List<Sparkle> sparkles = new();
         private readonly Random glitterRng = new Random();
-        private Timer glitterTimer = null!;
+        private Timer glitterTimer;
+
+        // SPINNING POKEBALL ANIMATION
+        private Timer? pokeballSpinTimer;
+        private Image? originalPokeballImage;
+        private float pokeballAngle = 0f;
+
+        // FONTS DOWNLOAD LINK
+        private LinkLabel downloadFontsLink = null!;
 
         ////////////////////////////////////////////////////////////
         // Initialize custom fonts for UI controls with fallbacks //
@@ -121,6 +127,127 @@ namespace SysBot.Pokemon.WinForms
             catch (Exception ex)
             {
                 Console.WriteLine($"[Font Initialization] Warning: {ex.Message}");
+            }
+        }
+
+        ////////////////////////////////////////////////////////////
+        ////////// FONTS DOWNLOAD LINK INITIALIZATION //////////////
+        ////////////////////////////////////////////////////////////
+        private void InitializeFontsLink()
+        {
+            // Check if user has opted to hide the fonts link
+            if (Config?.HideFontsLink == true)
+                return;
+
+            downloadFontsLink = new LinkLabel
+            {
+                Text = "Download Fonts",
+                AutoSize = true,
+                LinkColor = Color.FromArgb(51, 255, 255), // Cyan color
+                ActiveLinkColor = Color.FromArgb(100, 255, 255),
+                VisitedLinkColor = Color.FromArgb(51, 255, 255),
+                BackColor = Color.Transparent,
+                Font = new Font("Segoe UI", 8F, FontStyle.Regular)
+            };
+
+            // Position below the close/max/min buttons
+            downloadFontsLink.Location = new Point(panelTitleBar.Width - downloadFontsLink.Width - 100, 52);
+            downloadFontsLink.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+
+            downloadFontsLink.Click += DownloadFontsLink_Click;
+            downloadFontsLink.LinkClicked += DownloadFontsLink_LinkClicked;
+
+            panelTitleBar.Controls.Add(downloadFontsLink);
+        }
+
+        private void DownloadFontsLink_Click(object? sender, EventArgs e)
+        {
+            ShowFontDownloadDialog();
+        }
+
+        private void DownloadFontsLink_LinkClicked(object? sender, LinkLabelLinkClickedEventArgs e)
+        {
+            ShowFontDownloadDialog();
+        }
+
+        private void ShowFontDownloadDialog()
+        {
+            var result = MessageBox.Show(
+                "Would you like to download the required fonts for this application?\n\n" +
+                "The fonts will be downloaded as a .7z archive that you can extract and install.",
+                "Download Fonts",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question);
+
+            if (result == DialogResult.Yes)
+            {
+                _ = DownloadFontsAsync();
+            }
+        }
+
+        private async Task DownloadFontsAsync()
+        {
+            using var folderDialog = new FolderBrowserDialog
+            {
+                Description = "Select where to save the fonts archive",
+                ShowNewFolderButton = true
+            };
+
+            if (folderDialog.ShowDialog() != DialogResult.OK)
+                return;
+
+            string destPath = Path.Combine(folderDialog.SelectedPath, "Fonts.7z");
+
+            if (File.Exists(destPath))
+            {
+                var overwrite = MessageBox.Show(
+                    "Fonts.7z already exists in this location. Overwrite?",
+                    "File Exists",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Warning);
+
+                if (overwrite != DialogResult.Yes)
+                    return;
+            }
+
+            try
+            {
+                using var client = new HttpClient();
+                var fontsUrl = "https://github.com/Secludedly/ZE-FusionBot/raw/refs/heads/main/.extra/Fonts.7z";
+
+                LogUtil.LogInfo($"Downloading fonts from {fontsUrl}...", "Fonts");
+
+                var response = await client.GetAsync(fontsUrl);
+                response.EnsureSuccessStatusCode();
+
+                await using var fs = new FileStream(destPath, FileMode.Create, FileAccess.Write, FileShare.None);
+                await response.Content.CopyToAsync(fs);
+
+                LogUtil.LogInfo($"Fonts downloaded to: {destPath}", "Fonts");
+
+                var dontShowAgain = MessageBox.Show(
+                    $"Fonts downloaded successfully to:\n{destPath}\n\n" +
+                    "Extract the archive and install the fonts by right-clicking each .ttf/.otf file and selecting 'Install'.\n\n" +
+                    "Would you like to hide this download link in the future?",
+                    "Download Complete",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Information);
+
+                if (dontShowAgain == DialogResult.Yes)
+                {
+                    Config.HideFontsLink = true;
+                    SaveCurrentConfig();
+                    downloadFontsLink.Visible = false;
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtil.LogError($"Failed to download fonts: {ex.Message}", "Fonts");
+                MessageBox.Show(
+                    $"Failed to download fonts:\n{ex.Message}",
+                    "Download Error",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
             }
         }
 
@@ -186,6 +313,7 @@ namespace SysBot.Pokemon.WinForms
             }
 
             InitializeFonts();         // Apply custom fonts after component initialization
+            InitializeFontsLink();     // Add fonts download link to title bar
             SetupTitleBarButtonHoverEffects();
             panelTitleBar.Paint += panelTitleBar_Paint;
             InitGlitter();
@@ -193,6 +321,7 @@ namespace SysBot.Pokemon.WinForms
             Instance = this;
             InitializeLeftSideImage(); // Initialize the left side BG image in panelLeftSide
             InitializeUpperImage();    // Initialize the upper image in panelTitleBar
+            InitSpinningPokeball();    // Initialize the spinning pokeball animation
 
             // Force load FontAwesome font
             btnBots.IconChar = IconChar.Robot;
@@ -240,15 +369,13 @@ namespace SysBot.Pokemon.WinForms
 
             PokeTradeBotSWSH.SeedChecker = new Z3SeedSearchHandler<PK8>(); // Initialize the seed checker for SWSH mode
 
-            _botsForm = new BotsForm(); // Initialize the BotsForm instance
-
             try
             {
-                var (updateAvailable, _, newVersion) = await UpdateChecker.CheckForUpdatesAsync(); // Check for updates
+                var (updateAvailable, _, _) = await UpdateChecker.CheckForUpdatesAsync(); // Check for updates
                 hasUpdate = updateAvailable; // If there's an update, this flag gets checked
-                _botsForm.SetUpdateNotification(updateAvailable, newVersion); // Show update notification in BotsForm
             }
             catch { }
+            _botsForm = new BotsForm(); // Initialize the BotsForm instance
             _logsForm = new LogsForm(); // Initialize the LogsForm instance
             LogUtil.Forwarders.Add(new LogTextBoxForwarder(_logsForm.LogsBox)); // Add a log forwarder to the LogsForm's LogsBox
             _logsForm.LogsBox.MaxLength = 32767; // Set the maximum length of the LogsBox to 32767 characters (why this number though?)
@@ -300,15 +427,12 @@ namespace SysBot.Pokemon.WinForms
             }
             // Load other form shit and/or save valuable shit to config
             LoadControls();
-            Text = $"{(string.IsNullOrEmpty(Config.Hub.BotName) ? "ZE FusionBot |" : Config.Hub.BotName)} {TradeBot.Version} | Mode: {Config.Mode}";
+            Text = $"{(string.IsNullOrEmpty(Config.Hub.BotName) ? "PKM Universe |" : Config.Hub.BotName)} {TradeBot.Version} | Mode: {Config.Mode}";
             UpdateBackgroundImage(Config.Mode);        // Call the method to update image in leftSidePanel
             UpdateUpperImage(Config.Mode);        // Call the method to update image in panelTitleBar
             LoadThemeOptions();
 
             CB_Themes.SelectedIndexChanged += CB_Themes_SelectedIndexChanged;
-
-            // Initialize the Download Fonts link after config is loaded
-            InitializeFontsLink();
             LoadLogoImage(Config.Hub.BotLogoImage); // Load a URL image to replace logo
             InitUtil.InitializeStubs(Config.Mode);     // Stubby McStubbinson will set environment based on config mode
             OpenChildForm(_botsForm);
@@ -324,9 +448,6 @@ namespace SysBot.Pokemon.WinForms
             _botsForm.RebootStopButton.Click += B_RebootStop_Click; // Reboot and Stop button
             _botsForm.UpdateButton.Click += Updater_Click;          // Update button
             _botsForm.AddBotButton.Click += B_New_Click;            // Add button
-            _botsForm.PKHeXButton.Click += B_PKHeX_Click;           // PKHeX button
-            _botsForm.SwitchRemoteButton.Click += B_SwitchRemote_Click; // Switch Remote button
-            _botsForm.SysDVRButton.Click += B_SysDVR_Click;         // SysDVR button
 
             lblTitle.Text = Text; // Set the title label text to the form's text
 
@@ -362,114 +483,6 @@ namespace SysBot.Pokemon.WinForms
             ProgramMode.LGPE => new PokeBotRunnerImpl<PB7>(cfg.Hub, new BotFactory7LGPE()),
             _ => throw new IndexOutOfRangeException("Unsupported mode."), // A LIE
         };
-
-        /// <summary>
-        /// Switch game mode live without requiring a program reload
-        /// </summary>
-        /// <param name="newMode">The new ProgramMode to switch to</param>
-        public void SwitchGameMode(ProgramMode newMode)
-        {
-            if (Config.Mode == newMode)
-            {
-                LogUtil.LogInfo($"Already in {newMode} mode - no change needed", "GameMode");
-                return;
-            }
-
-            try
-            {
-                LogUtil.LogInfo($"Switching from {Config.Mode} to {newMode} mode...", "GameMode");
-
-                // Check if any bots are currently running
-                var runningBots = _botsForm.BotPanel.Controls.OfType<BotController>()
-                    .Where(c => c.GetBot()?.IsRunning == true)
-                    .ToList();
-
-                if (runningBots.Any())
-                {
-                    var result = MessageBox.Show(
-                        $"There are {runningBots.Count} bot(s) currently running.\n\n" +
-                        "Switching game modes will stop all running bots.\n\n" +
-                        "Do you want to continue?",
-                        "Stop Running Bots?",
-                        MessageBoxButtons.YesNo,
-                        MessageBoxIcon.Warning);
-
-                    if (result != DialogResult.Yes)
-                    {
-                        LogUtil.LogInfo("Game mode switch cancelled by user", "GameMode");
-                        return;
-                    }
-
-                    // Stop all running bots
-                    LogUtil.LogInfo("Stopping all running bots before mode switch...", "GameMode");
-                    SendAll(WebApiCommand.Stop);
-
-                    // Wait a moment for bots to stop
-                    System.Threading.Thread.Sleep(500);
-                }
-
-                // Store old mode for logging
-                var oldMode = Config.Mode;
-
-                // Update the config mode
-                Config.Mode = newMode;
-
-                // Update BatchCommandNormalizer to use the new mode
-                BatchCommandNormalizer.CurrentGameMode = newMode;
-
-                // Recreate the running environment with the new mode
-                RunningEnvironment = GetRunner(Config);
-                LogUtil.LogInfo($"Running environment recreated for {newMode}", "GameMode");
-
-                // Update UI elements
-                if (InvokeRequired)
-                {
-                    Invoke((Action)(() =>
-                    {
-                        Text = $"{(string.IsNullOrEmpty(Config.Hub.BotName) ? "ZE FusionBot |" : Config.Hub.BotName)} {TradeBot.Version} | Mode: {newMode}";
-                        lblTitle.Text = Text;
-                        UpdateBackgroundImage(newMode);
-                        UpdateUpperImage(newMode);
-                    }));
-                }
-                else
-                {
-                    Text = $"{(string.IsNullOrEmpty(Config.Hub.BotName) ? "ZE FusionBot |" : Config.Hub.BotName)} {TradeBot.Version} | Mode: {newMode}";
-                    lblTitle.Text = Text;
-                    UpdateBackgroundImage(newMode);
-                    UpdateUpperImage(newMode);
-                }
-
-                // Reinitialize sprite system for the new mode
-                InitUtil.InitializeStubs(newMode);
-                LogUtil.LogInfo($"Sprite system initialized for {newMode}", "GameMode");
-
-                // Reload routine combobox with mode-specific routines
-                LoadControls();
-                LogUtil.LogInfo("Routine options updated for new mode", "GameMode");
-
-                // Save the updated config to disk
-                SaveCurrentConfig();
-                LogUtil.LogInfo($"Config saved with new mode: {newMode}", "GameMode");
-
-                LogUtil.LogInfo($"Successfully switched from {oldMode} to {newMode}", "GameMode");
-                MessageBox.Show(
-                    $"Game mode successfully changed to {newMode}!\n\n" +
-                    "You can now start your bots and they will operate in the new mode.",
-                    "Mode Switch Successful",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Information);
-            }
-            catch (Exception ex)
-            {
-                LogUtil.LogError($"Failed to switch game mode: {ex.Message}", "GameMode");
-                MessageBox.Show(
-                    $"Failed to switch game mode:\n\n{ex.Message}\n\nPlease try reloading the program.",
-                    "Mode Switch Failed",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Error);
-            }
-        }
 
 
         //////////////////////////////////////////////////////////////////
@@ -525,7 +538,7 @@ namespace SysBot.Pokemon.WinForms
                     string? dirPath = Path.GetDirectoryName(exePath);
                     if (!string.IsNullOrEmpty(dirPath))
                     {
-                        string portInfoPath = Path.Combine(dirPath, $"ZE_FusionBot_{Environment.ProcessId}.port");
+                        string portInfoPath = Path.Combine(dirPath, $"PKM-Universe-Bot_{Environment.ProcessId}.port");
                         if (File.Exists(portInfoPath))
                             File.Delete(portInfoPath);
                     }
@@ -649,24 +662,6 @@ namespace SysBot.Pokemon.WinForms
                 return;
             }
             System.Media.SystemSounds.Asterisk.Play(); // Play a sound to indicate the bot was added successfully
-        }
-
-        // Launch PKHeX when the PKHeX button is clicked
-        private void B_PKHeX_Click(object? sender, EventArgs e)
-        {
-            PKHeXLauncher.Launch(Config.Hub.Folder.PKHeXDirectory);
-        }
-
-        // Launch Switch Remote for PC when the button is clicked
-        private void B_SwitchRemote_Click(object? sender, EventArgs e)
-        {
-            SwitchRemoteLauncher.Launch(Config.Hub.Folder.SwitchRemoteForPC);
-        }
-
-        // Launch SysDVR when the button is clicked
-        private void B_SysDVR_Click(object? sender, EventArgs e)
-        {
-            SysDVRLauncher.Launch();
         }
 
         // Update handling
@@ -817,10 +812,7 @@ namespace SysBot.Pokemon.WinForms
         ///////////////////////////////////////////////////
 
         // Initialize the method for the left side image in the panelLeftSide
-        private PictureBox leftSideImage = null!;
-
-        // Font download link in title bar
-        private LinkLabel downloadFontsLink = null!;
+        private PictureBox leftSideImage;
 
         // Initialize the meat and potatoes for the left side image in the panelLeftSide
         private void InitializeLeftSideImage()
@@ -864,7 +856,7 @@ namespace SysBot.Pokemon.WinForms
         }
 
         // Initialize the method for the upper panel image in the upperPanelImage
-        private PictureBox upperPanelImage = null!;
+        private PictureBox upperPanelImage;
 
         private void InitializeUpperImage()
         {
@@ -896,6 +888,66 @@ namespace SysBot.Pokemon.WinForms
                           + (usableWidth - upperPanelImage.Width) / 1;
 
             upperPanelImage.Location = new Point(centerX, 0);
+        }
+
+        ///////////////////////////////////////////////////
+        ////////// SPINNING POKEBALL ANIMATION ////////////
+        ///////////////////////////////////////////////////
+
+        private void InitSpinningPokeball()
+        {
+            if (pictureSpinningPokeball == null)
+                return;
+
+            // Try to load the pokeball image from resources
+            try
+            {
+                originalPokeballImage = Resources.pkm_pokeball;
+                pictureSpinningPokeball.Image = originalPokeballImage;
+            }
+            catch
+            {
+                // If resource not found, hide the control
+                pictureSpinningPokeball.Visible = false;
+                return;
+            }
+
+            // Initialize the spin timer (~30 FPS)
+            pokeballSpinTimer = new Timer { Interval = 33 };
+            pokeballSpinTimer.Tick += (s, e) =>
+            {
+                pokeballAngle += 5f; // Rotate 5 degrees per tick
+                if (pokeballAngle >= 360f)
+                    pokeballAngle = 0f;
+
+                if (originalPokeballImage != null)
+                    pictureSpinningPokeball.Image = RotateImage(originalPokeballImage, pokeballAngle);
+            };
+            pokeballSpinTimer.Start();
+        }
+
+        private static Image RotateImage(Image img, float angle)
+        {
+            var bmp = new Bitmap(img.Width, img.Height);
+            bmp.SetResolution(img.HorizontalResolution, img.VerticalResolution);
+
+            using (var g = Graphics.FromImage(bmp))
+            {
+                g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+                g.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.HighQuality;
+                g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+
+                // Move origin to center of image
+                g.TranslateTransform(img.Width / 2f, img.Height / 2f);
+                // Rotate
+                g.RotateTransform(angle);
+                // Move origin back
+                g.TranslateTransform(-img.Width / 2f, -img.Height / 2f);
+                // Draw the image
+                g.DrawImage(img, new Point(0, 0));
+            }
+
+            return bmp;
         }
 
         private void LoadLogoImage(string logoPath)
@@ -1091,18 +1143,8 @@ namespace SysBot.Pokemon.WinForms
         // Update the method signature to explicitly allow nullability for the 'sender' parameter.
         private void panelTitleBar_MouseDown(object? sender, MouseEventArgs e)
         {
-            // Don't drag window when clicking on title bar buttons or the fonts link
             if (sender == btnClose || sender == btnMaximize || sender == btnMinimize || sender == downloadFontsLink)
                 return;
-
-            // Check if the click is within the download fonts link bounds
-            if (downloadFontsLink != null && downloadFontsLink.Visible)
-            {
-                var linkBounds = downloadFontsLink.Bounds;
-                if (linkBounds.Contains(e.Location))
-                    return;
-            }
-
             ReleaseCapture();                           // Release the mouse capture
             SendMessage(this.Handle, 0x112, 0xf012, 0); // Send a message to the window to allow dragging
         }
@@ -1148,13 +1190,13 @@ namespace SysBot.Pokemon.WinForms
         }
 
         // Close button
-        private void BtnClose_Click(object? sender, EventArgs e)
+        private void BtnClose_Click(object sender, EventArgs e)
         {
             Application.Exit(); // Exit program on Close button click
         }
 
         // Maximize and Restore button
-        private void BtnMaximize_Click(object? sender, EventArgs e)
+        private void BtnMaximize_Click(object sender, EventArgs e)
         {
             if (WindowState == FormWindowState.Normal)   // If the window is in normal state, then...
                 WindowState = FormWindowState.Maximized; // ...Maximize the window
@@ -1464,205 +1506,6 @@ namespace SysBot.Pokemon.WinForms
 
 
         ///////////////////////////////////////////////////
-        ///////////// DOWNLOAD FONTS LINK /////////////////
-        ///////////////////////////////////////////////////
-
-        // Initialize the Download Fonts link in the title bar
-        private void InitializeFontsLink()
-        {
-            try
-            {
-                // Check if user has chosen to hide the fonts link
-                if (Config.HideFontsLink)
-                {
-                    LogUtil.LogInfo("Fonts link is hidden per user preference", "System");
-                    return;
-                }
-
-                LogUtil.LogInfo("Initializing Download Fonts link", "System");
-
-                downloadFontsLink = new LinkLabel
-                {
-                    Text = "Download Fonts",
-                    AutoSize = true,
-                    LinkColor = Color.FromArgb(51, 255, 255),
-                    VisitedLinkColor = Color.FromArgb(51, 255, 255),
-                    ActiveLinkColor = Color.FromArgb(51, 200, 200),
-                    LinkBehavior = LinkBehavior.HoverUnderline,
-                    Font = new Font("Segoe UI", 7.5F),
-                    BackColor = Color.Transparent,
-                    Cursor = Cursors.Hand
-                };
-
-                // Position below the Minimize/Maximize/Close buttons - custom XY positioning
-                // Move significantly to the left and slightly down from the close button
-                downloadFontsLink.Location = new Point(btnClose.Left - 76, btnClose.Bottom + 14);
-
-                // Add click handlers - both Click and LinkClicked for compatibility
-                downloadFontsLink.Click += DownloadFontsLink_Click;
-                downloadFontsLink.LinkClicked += DownloadFontsLink_LinkClicked;
-
-                // Add to title bar
-                panelTitleBar.Controls.Add(downloadFontsLink);
-                downloadFontsLink.BringToFront();
-
-                LogUtil.LogInfo("Download Fonts link initialized successfully", "System");
-            }
-            catch (Exception ex)
-            {
-                LogUtil.LogError($"Failed to initialize Download Fonts link: {ex.Message}", "System");
-            }
-        }
-
-        // Handle the Download Fonts link click (left-click)
-        private void DownloadFontsLink_Click(object? sender, EventArgs e)
-        {
-            try
-            {
-                LogUtil.LogInfo("Download Fonts link clicked (Click event)", "System");
-
-                // Show custom dialog
-                using var dialog = new FontDownloadDialog();
-                var result = dialog.ShowDialog(this);
-
-                LogUtil.LogInfo($"Dialog result: {result}", "System");
-
-                if (result == DialogResult.Yes)
-                {
-                    // User clicked Yes, download the fonts
-                    DownloadFonts();
-                }
-
-                // Check if user selected to hide the link
-                if (dialog.DontShowAgain)
-                {
-                    Config.HideFontsLink = true;
-                    SaveCurrentConfig();
-
-                    // Hide the link
-                    if (downloadFontsLink != null)
-                    {
-                        panelTitleBar.Controls.Remove(downloadFontsLink);
-                        downloadFontsLink.Dispose();
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                LogUtil.LogError($"Error in Download Fonts link click: {ex.Message}", "System");
-                WinFormsUtil.Error($"Error showing font download dialog:\n{ex.Message}\n\nStack trace:\n{ex.StackTrace}");
-            }
-        }
-
-        // Handle the Download Fonts link click (right-click/LinkClicked event)
-        private void DownloadFontsLink_LinkClicked(object? sender, LinkLabelLinkClickedEventArgs e)
-        {
-            try
-            {
-                LogUtil.LogInfo("Download Fonts link clicked", "System");
-
-                // Show custom dialog
-                using var dialog = new FontDownloadDialog();
-                var result = dialog.ShowDialog(this);
-
-                LogUtil.LogInfo($"Dialog result: {result}", "System");
-
-                if (result == DialogResult.Yes)
-                {
-                    // User clicked Yes, download the fonts
-                    DownloadFonts();
-                }
-
-                // Check if user selected to hide the link
-                if (dialog.DontShowAgain)
-                {
-                    Config.HideFontsLink = true;
-                    SaveCurrentConfig();
-
-                    // Hide the link
-                    if (downloadFontsLink != null)
-                    {
-                        panelTitleBar.Controls.Remove(downloadFontsLink);
-                        downloadFontsLink.Dispose();
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                LogUtil.LogError($"Error in Download Fonts link click: {ex.Message}", "System");
-                WinFormsUtil.Error($"Error showing font download dialog:\n{ex.Message}\n\nStack trace:\n{ex.StackTrace}");
-            }
-        }
-
-        // Download the fonts file
-        private async void DownloadFonts()
-        {
-            const string downloadUrl = "https://github.com/Secludedly/ZE-FusionBot/raw/refs/heads/main/.extra/Fonts.7z";
-
-            try
-            {
-                // Let user choose download location
-                using var folderDialog = new FolderBrowserDialog
-                {
-                    Description = "Select where to download Fonts.7z",
-                    ShowNewFolderButton = true,
-                    // Set default to Downloads folder
-                    SelectedPath = Path.Combine(
-                        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-                        "Downloads"
-                    )
-                };
-
-                var dialogResult = folderDialog.ShowDialog(this);
-                if (dialogResult != DialogResult.OK || string.IsNullOrWhiteSpace(folderDialog.SelectedPath))
-                {
-                    LogUtil.LogInfo("Font download cancelled by user", "System");
-                    return;
-                }
-
-                string filePath = Path.Combine(folderDialog.SelectedPath, "Fonts.7z");
-
-                // Check if file already exists
-                if (File.Exists(filePath))
-                {
-                    var overwriteResult = MessageBox.Show(
-                        $"The file Fonts.7z already exists in this location.\n\nDo you want to overwrite it?",
-                        "File Exists",
-                        MessageBoxButtons.YesNo,
-                        MessageBoxIcon.Question
-                    );
-
-                    if (overwriteResult != DialogResult.Yes)
-                    {
-                        LogUtil.LogInfo("Font download cancelled - file already exists", "System");
-                        return;
-                    }
-                }
-
-                // Download the file
-                LogUtil.LogInfo($"Downloading fonts to: {filePath}", "System");
-
-                using var client = new HttpClient();
-                client.Timeout = TimeSpan.FromMinutes(5);
-
-                var response = await client.GetAsync(downloadUrl);
-                response.EnsureSuccessStatusCode();
-
-                var fileBytes = await response.Content.ReadAsByteArrayAsync();
-                await File.WriteAllBytesAsync(filePath, fileBytes);
-
-                LogUtil.LogInfo($"Fonts downloaded successfully to: {filePath}", "System");
-                WinFormsUtil.Alert($"Fonts downloaded successfully!\n\nLocation: {filePath}\n\nPlease install the fonts and restart the program.");
-            }
-            catch (Exception ex)
-            {
-                LogUtil.LogError($"Failed to download fonts: {ex.Message}", "System");
-                WinFormsUtil.Error($"Failed to download fonts:\n{ex.Message}");
-            }
-        }
-
-
-        ///////////////////////////////////////////////////
         //////////////// SAVING TO CONFIG /////////////////
         ///////////////////////////////////////////////////
         public void SaveCurrentConfig()
@@ -1685,107 +1528,6 @@ namespace SysBot.Pokemon.WinForms
         private void panel6_Paint(object sender, PaintEventArgs e)
         {
 
-        }
-    }
-
-    ///////////////////////////////////////////////////
-    ///////// FONT DOWNLOAD DIALOG FORM ///////////////
-    ///////////////////////////////////////////////////
-
-    public class FontDownloadDialog : Form
-    {
-        private CheckBox chkDontShowAgain = null!;
-        private Button btnYes = null!;
-        private Button btnNo = null!;
-        private Label lblMessage = null!;
-
-        public bool DontShowAgain => chkDontShowAgain?.Checked ?? false;
-
-        public FontDownloadDialog()
-        {
-            try
-            {
-                InitializeDialog();
-            }
-            catch (Exception ex)
-            {
-                LogUtil.LogError($"Error initializing FontDownloadDialog: {ex.Message}", "System");
-                throw;
-            }
-        }
-
-        private void InitializeDialog()
-        {
-            // Form settings
-            this.Text = "Download Fonts";
-            this.Size = new Size(500, 240);
-            this.FormBorderStyle = FormBorderStyle.FixedDialog;
-            this.StartPosition = FormStartPosition.CenterParent;
-            this.MaximizeBox = false;
-            this.MinimizeBox = false;
-            this.BackColor = Color.FromArgb(32, 32, 32);
-
-            // Message label
-            lblMessage = new Label
-            {
-                Text = "Would you like to download the fonts used in this program in order to install them to display the text correctly?\n\nBe sure after you install the fonts that you reload the program.",
-                Location = new Point(20, 20),
-                Size = new Size(440, 80),
-                Font = new Font("Segoe UI", 9.75F),
-                ForeColor = Color.White,
-                AutoSize = false
-            };
-
-            // Checkbox
-            chkDontShowAgain = new CheckBox
-            {
-                Text = "Do not display a link to Download Fonts again",
-                Location = new Point(20, 110),
-                Size = new Size(350, 24),
-                Font = new Font("Segoe UI", 9F),
-                ForeColor = Color.White,
-                BackColor = Color.Transparent
-            };
-
-            // Yes button
-            btnYes = new Button
-            {
-                Text = "Yes",
-                Location = new Point(280, 145),
-                Size = new Size(90, 30),
-                Font = new Font("Segoe UI", 9F),
-                DialogResult = DialogResult.Yes,
-                BackColor = Color.FromArgb(0, 120, 215),
-                ForeColor = Color.White,
-                FlatStyle = FlatStyle.Flat,
-                Cursor = Cursors.Hand
-            };
-            btnYes.FlatAppearance.BorderSize = 0;
-
-            // No button
-            btnNo = new Button
-            {
-                Text = "No",
-                Location = new Point(380, 145),
-                Size = new Size(90, 30),
-                Font = new Font("Segoe UI", 9F),
-                DialogResult = DialogResult.No,
-                BackColor = Color.FromArgb(60, 60, 60),
-                ForeColor = Color.White,
-                FlatStyle = FlatStyle.Flat,
-                Cursor = Cursors.Hand
-            };
-            btnNo.FlatAppearance.BorderSize = 0;
-
-            // Add controls to form
-            this.Controls.Add(lblMessage);
-            this.Controls.Add(chkDontShowAgain);
-            this.Controls.Add(btnYes);
-            this.Controls.Add(btnNo);
-
-            // Set accept and cancel buttons
-            this.AcceptButton = btnYes;
-            this.CancelButton = btnNo;
         }
     }
 }

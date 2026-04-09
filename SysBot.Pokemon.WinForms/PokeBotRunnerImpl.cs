@@ -12,9 +12,7 @@ namespace SysBot.Pokemon;
 /// </summary>
 public class PokeBotRunnerImpl<T> : PokeBotRunner<T> where T : PKM, new()
 {
-#pragma warning disable CS0649 // Field is never assigned
-    private readonly ProgramConfig? _config;
-#pragma warning restore CS0649
+    private readonly ProgramConfig _config;
     public PokeBotRunnerImpl(PokeTradeHub<T> hub, BotFactory<T> fac) : base(hub, fac) { }
     public PokeBotRunnerImpl(PokeTradeHubConfig config, BotFactory<T> fac) : base(config, fac) { }
 

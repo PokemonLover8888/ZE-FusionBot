@@ -48,6 +48,9 @@ namespace SysBot.Pokemon.WinForms
             CB_Themes = new ComboBox();
             btnBots = new IconButton();
             panelImageLogo = new Panel();
+            pictureSpinningPokeball = new PictureBox();
+            lblPKM = new Label();
+            lblUniverse = new Label();
             panel6 = new Panel();
             panel5 = new Panel();
             panel3 = new Panel();
@@ -68,6 +71,7 @@ namespace SysBot.Pokemon.WinForms
             panel1 = new Panel();
             panelLeftSide.SuspendLayout();
             panelImageLogo.SuspendLayout();
+            ((System.ComponentModel.ISupportInitialize)pictureSpinningPokeball).BeginInit();
             ((System.ComponentModel.ISupportInitialize)pictureLogo).BeginInit();
             panelTitleBar.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)btnClose).BeginInit();
@@ -90,7 +94,7 @@ namespace SysBot.Pokemon.WinForms
             panelLeftSide.Dock = DockStyle.Left;
             panelLeftSide.Location = new Point(0, 0);
             panelLeftSide.Name = "panelLeftSide";
-            panelLeftSide.Size = new Size(220, 422);
+            panelLeftSide.Size = new Size(220, 500);
             panelLeftSide.TabIndex = 0;
             // 
             // btnLogs
@@ -173,18 +177,64 @@ namespace SysBot.Pokemon.WinForms
             btnBots.Click += Bots_Click;
             // 
             // panelImageLogo
-            // 
+            //
             panelImageLogo.BackColor = Color.Transparent;
             panelImageLogo.Controls.Add(panel6);
             panelImageLogo.Controls.Add(panel5);
             panelImageLogo.Controls.Add(panel3);
-            panelImageLogo.Controls.Add(pictureLogo);
+            panelImageLogo.Controls.Add(lblPKM);
+            panelImageLogo.Controls.Add(lblUniverse);
+            panelImageLogo.Controls.Add(pictureSpinningPokeball);
             panelImageLogo.Dock = DockStyle.Top;
             panelImageLogo.Location = new Point(0, 0);
             panelImageLogo.Name = "panelImageLogo";
             panelImageLogo.Size = new Size(220, 125);
             panelImageLogo.TabIndex = 0;
-            // 
+            //
+            // pictureLogo - Hidden, replaced by spinning pokeball + text label
+            //
+            pictureLogo.BackColor = Color.Transparent;
+            pictureLogo.Location = new Point(0, 0);
+            pictureLogo.Name = "pictureLogo";
+            pictureLogo.Size = new Size(1, 1);
+            pictureLogo.Visible = false;
+            pictureLogo.TabIndex = 0;
+            pictureLogo.TabStop = false;
+            //
+            // pictureSpinningPokeball - Centered in logo area above text
+            //
+            pictureSpinningPokeball.BackColor = Color.Transparent;
+            pictureSpinningPokeball.Location = new Point(75, 12);
+            pictureSpinningPokeball.Name = "pictureSpinningPokeball";
+            pictureSpinningPokeball.Size = new Size(70, 70);
+            pictureSpinningPokeball.SizeMode = PictureBoxSizeMode.StretchImage;
+            pictureSpinningPokeball.TabIndex = 10;
+            pictureSpinningPokeball.TabStop = false;
+            //
+            // lblPKM - "PKM" in cyan
+            //
+            lblPKM.BackColor = Color.Transparent;
+            lblPKM.Font = new Font("Segoe UI", 12F, FontStyle.Bold, GraphicsUnit.Point, 0);
+            lblPKM.ForeColor = Color.FromArgb(0, 200, 255);
+            lblPKM.Location = new Point(15, 85);
+            lblPKM.Name = "lblPKM";
+            lblPKM.Size = new Size(60, 30);
+            lblPKM.TabIndex = 11;
+            lblPKM.Text = "PKM";
+            lblPKM.TextAlign = ContentAlignment.MiddleRight;
+            //
+            // lblUniverse - "UNIVERSE" in magenta
+            //
+            lblUniverse.BackColor = Color.Transparent;
+            lblUniverse.Font = new Font("Segoe UI", 12F, FontStyle.Bold, GraphicsUnit.Point, 0);
+            lblUniverse.ForeColor = Color.FromArgb(220, 50, 150);
+            lblUniverse.Location = new Point(78, 85);
+            lblUniverse.Name = "lblUniverse";
+            lblUniverse.Size = new Size(120, 30);
+            lblUniverse.TabIndex = 12;
+            lblUniverse.Text = "UNIVERSE";
+            lblUniverse.TextAlign = ContentAlignment.MiddleLeft;
+            //
             // panel6
             // 
             panel6.BackColor = Color.FromArgb(20, 19, 57);
@@ -212,30 +262,19 @@ namespace SysBot.Pokemon.WinForms
             panel3.Name = "panel3";
             panel3.Size = new Size(220, 6);
             panel3.TabIndex = 3;
-            // 
-            // pictureLogo
-            // 
-            pictureLogo.BackColor = Color.Transparent;
-            pictureLogo.BackgroundImageLayout = ImageLayout.Stretch;
-            pictureLogo.Image = (Image)resources.GetObject("pictureLogo.Image");
-            pictureLogo.Location = new Point(3, 12);
-            pictureLogo.Name = "pictureLogo";
-            pictureLogo.Size = new Size(217, 107);
-            pictureLogo.SizeMode = PictureBoxSizeMode.StretchImage;
-            pictureLogo.TabIndex = 0;
-            pictureLogo.TabStop = false;
+            //
             // 
             // lblTitle
             // 
             lblTitle.BackColor = Color.Transparent;
             lblTitle.Font = new Font("Bahnschrift", 7.20000029F, FontStyle.Regular, GraphicsUnit.Point, 0);
             lblTitle.ForeColor = Color.Gainsboro;
-            lblTitle.Location = new Point(-1, 390);
+            lblTitle.Location = new Point(-1, 468);
             lblTitle.Margin = new Padding(0);
             lblTitle.Name = "lblTitle";
             lblTitle.Size = new Size(220, 32);
             lblTitle.TabIndex = 4;
-            lblTitle.Text = "ZE FusionBot | v0.0.0 | MODE: None";
+            lblTitle.Text = "PKM Universe | v0.0.0 | MODE: None";
             lblTitle.TextAlign = ContentAlignment.MiddleCenter;
             // 
             // panel4
@@ -260,7 +299,7 @@ namespace SysBot.Pokemon.WinForms
             panelTitleBar.Dock = DockStyle.Top;
             panelTitleBar.Location = new Point(220, 0);
             panelTitleBar.Name = "panelTitleBar";
-            panelTitleBar.Size = new Size(580, 58);
+            panelTitleBar.Size = new Size(980, 58);
             panelTitleBar.TabIndex = 1;
             // 
             // btnClose
@@ -272,7 +311,7 @@ namespace SysBot.Pokemon.WinForms
             btnClose.IconColor = Color.IndianRed;
             btnClose.IconFont = IconFont.Auto;
             btnClose.IconSize = 20;
-            btnClose.Location = new Point(556, 6);
+            btnClose.Location = new Point(956, 6);
             btnClose.Name = "btnClose";
             btnClose.Size = new Size(20, 22);
             btnClose.TabIndex = 4;
@@ -286,7 +325,7 @@ namespace SysBot.Pokemon.WinForms
             btnMaximize.IconColor = Color.White;
             btnMaximize.IconFont = IconFont.Auto;
             btnMaximize.IconSize = 20;
-            btnMaximize.Location = new Point(537, 6);
+            btnMaximize.Location = new Point(937, 6);
             btnMaximize.Name = "btnMaximize";
             btnMaximize.Size = new Size(20, 22);
             btnMaximize.TabIndex = 3;
@@ -300,7 +339,7 @@ namespace SysBot.Pokemon.WinForms
             btnMinimize.IconColor = Color.White;
             btnMinimize.IconFont = IconFont.Auto;
             btnMinimize.IconSize = 20;
-            btnMinimize.Location = new Point(518, 6);
+            btnMinimize.Location = new Point(918, 6);
             btnMinimize.Name = "btnMinimize";
             btnMinimize.Size = new Size(20, 22);
             btnMinimize.TabIndex = 2;
@@ -344,7 +383,7 @@ namespace SysBot.Pokemon.WinForms
             shadowPanelTop.Dock = DockStyle.Top;
             shadowPanelTop.Location = new Point(220, 58);
             shadowPanelTop.Name = "shadowPanelTop";
-            shadowPanelTop.Size = new Size(580, 6);
+            shadowPanelTop.Size = new Size(980, 6);
             shadowPanelTop.TabIndex = 2;
             // 
             // shadowPanelLeft
@@ -353,7 +392,7 @@ namespace SysBot.Pokemon.WinForms
             shadowPanelLeft.Dock = DockStyle.Left;
             shadowPanelLeft.Location = new Point(220, 64);
             shadowPanelLeft.Name = "shadowPanelLeft";
-            shadowPanelLeft.Size = new Size(6, 358);
+            shadowPanelLeft.Size = new Size(6, 436);
             shadowPanelLeft.TabIndex = 3;
             // 
             // panelMain
@@ -364,7 +403,7 @@ namespace SysBot.Pokemon.WinForms
             panelMain.Dock = DockStyle.Fill;
             panelMain.Location = new Point(226, 64);
             panelMain.Name = "panelMain";
-            panelMain.Size = new Size(574, 358);
+            panelMain.Size = new Size(974, 436);
             panelMain.TabIndex = 4;
             // 
             // panel2
@@ -389,7 +428,7 @@ namespace SysBot.Pokemon.WinForms
             // 
             AutoScaleDimensions = new SizeF(8F, 20F);
             AutoScaleMode = AutoScaleMode.Font;
-            ClientSize = new Size(800, 422);
+            ClientSize = new Size(1200, 500);
             Controls.Add(panelMain);
             Controls.Add(shadowPanelLeft);
             Controls.Add(shadowPanelTop);
@@ -398,12 +437,14 @@ namespace SysBot.Pokemon.WinForms
             FormBorderStyle = FormBorderStyle.None;
             Icon = Properties.Resources.icon;
             Margin = new Padding(5, 4, 5, 4);
-            MinimumSize = new Size(800, 422);
+            MinimumSize = new Size(1200, 500);
             Name = "Main";
             StartPosition = FormStartPosition.CenterScreen;
-            Text = "ZE FusionBot";
+            Text = "PKM Universe Bot";
             panelLeftSide.ResumeLayout(false);
             panelImageLogo.ResumeLayout(false);
+            panelImageLogo.PerformLayout();
+            ((System.ComponentModel.ISupportInitialize)pictureSpinningPokeball).EndInit();
             ((System.ComponentModel.ISupportInitialize)pictureLogo).EndInit();
             panelTitleBar.ResumeLayout(false);
             panelTitleBar.PerformLayout();
@@ -456,6 +497,9 @@ namespace SysBot.Pokemon.WinForms
         internal Panel panel6;
         internal Panel panel5;
         private ComboBox CB_Themes;
+        internal PictureBox pictureSpinningPokeball;
+        internal Label lblPKM;
+        internal Label lblUniverse;
     }
 }
 

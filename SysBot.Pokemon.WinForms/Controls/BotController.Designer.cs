@@ -1,4 +1,3 @@
-#nullable enable
 using System.Windows.Forms;
 using System;
 using System.Drawing;
@@ -10,7 +9,7 @@ namespace SysBot.Pokemon.WinForms;
 
 partial class BotController
 {
-    private System.ComponentModel.IContainer? components = null;
+    private System.ComponentModel.IContainer components = null;
 
     protected override void Dispose(bool disposing)
     {
@@ -160,18 +159,16 @@ partial class BotController
 
     #endregion
 
-    private Panel pnlStatus = null!;
-    private Label lblStatus = null!;
-    private Label lblConnectionInfo = null!;
-#pragma warning disable CS0649 // Field is never assigned
-    private Label? lblLastLogTime;
-#pragma warning restore CS0649
+    private Panel pnlStatus;
+    private Label lblStatus;
+    private Label lblConnectionInfo;
+    private Label lblLastLogTime;
     private Label lblConnectionName = new Label();
-    private Label lblRoutine = null!;
-    private RichTextBox rtbBotMeta = null!;
-    private Button btnActions = null!;
-    private ContextMenuStrip RCMenu = null!;
-    private Timer _statusGlowTimer = null!;
+    private Label lblRoutine;
+    private RichTextBox rtbBotMeta;
+    private Button btnActions;
+    private ContextMenuStrip RCMenu;
+    private Timer _statusGlowTimer;
 
 }
 

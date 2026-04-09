@@ -38,22 +38,18 @@ public class FancyButton : Button
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public Color GlowColor { get; set; } = Color.Cyan;
 
-#pragma warning disable CS0414 // Field is assigned but never used
     private bool isHovered = false;
     private bool isClicked = false;
-#pragma warning restore CS0414
 
     // Shake state
-    private Timer shakeTimer = null!;
+    private Timer shakeTimer;
     private int shakeCounter = 0;
     private Point originalLocation;
 
     // Animation timer drives glow pulse (runs always) and animation offset (not used here)
-    private Timer animationTimer = null!;
-#pragma warning disable CS0414 // Field is assigned but never used
+    private Timer animationTimer;
     private int animationOffset = 0;
     private bool animationForward = true;
-#pragma warning restore CS0414
 
     private const int animationSpeed = 2;  // pixels per tick
     private const int animationRange = 100;
@@ -230,38 +226,14 @@ public class FancyButton : Button
         using var brush = new SolidBrush(Color.FromArgb(20, 19, 57));
         g.FillRectangle(brush, fillRect);
 
-        // 3) Draw the button image if set (for icon buttons)
-        Image? imageToRender = Image ?? BackgroundImage;
-        if (imageToRender != null)
-        {
-            try
-            {
-                int padding = 4;
-                Rectangle imageRect = new Rectangle(
-                    borderThickness + padding,
-                    borderThickness + padding,
-                    Width - (2 * borderThickness) - (2 * padding),
-                    Height - (2 * borderThickness) - (2 * padding)
-                );
-                g.DrawImage(imageToRender, imageRect);
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error drawing button image: {ex.Message}");
-            }
-        }
-
-        // Draw text if present (even if image is shown, in case we want both)
-        if (!string.IsNullOrEmpty(Text))
-        {
-            TextRenderer.DrawText(
-                g,
-                Text,
-                Font,
-                ClientRectangle,
-                ForeColor,
-                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis
-            );
-        }
+        // 3) Draw the button text centered
+        TextRenderer.DrawText(
+            g,
+            Text,
+            Font,
+            ClientRectangle,
+            ForeColor,
+            TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis
+        );
     }
 }

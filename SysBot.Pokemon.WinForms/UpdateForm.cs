@@ -10,10 +10,10 @@ namespace SysBot.Pokemon.WinForms
 {
     public class UpdateForm : Form
     {
-        private Button buttonDownload = null!;
-        private Label labelUpdateInfo = null!;
-        private Label labelChangelogTitle = null!;
-        private TextBox textBoxChangelog = null!;
+        private Button buttonDownload;
+        private Label labelUpdateInfo;
+        private Label labelChangelogTitle;
+        private TextBox textBoxChangelog;
         private readonly bool isUpdateRequired;
         private readonly bool isUpdateAvailable;
         private readonly string newVersion;
@@ -186,7 +186,7 @@ namespace SysBot.Pokemon.WinForms
             string tempPath = Path.Combine(Path.GetTempPath(), $"SysBot.Pokemon.WinForms_{Guid.NewGuid()}.exe");
             using (var client = new HttpClient())
             {
-                client.DefaultRequestHeaders.Add("User-Agent", "ZE-FusionBot");
+                client.DefaultRequestHeaders.Add("User-Agent", "PKM-Universe-Bot");
                 var response = await client.GetAsync(downloadUrl);
                 response.EnsureSuccessStatusCode();
                 var fileBytes = await response.Content.ReadAsByteArrayAsync();

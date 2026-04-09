@@ -113,6 +113,16 @@ namespace SysBot.Pokemon.WinForms.Properties {
         /// <summary>
         ///   Looks up a localized resource of type System.Drawing.Bitmap.
         /// </summary>
+        internal static System.Drawing.Bitmap pkm_pokeball {
+            get {
+                object obj = ResourceManager.GetObject("pkm_pokeball", resourceCulture);
+                return ((System.Drawing.Bitmap)(obj));
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized resource of type System.Drawing.Bitmap.
+        /// </summary>
         internal static System.Drawing.Bitmap pla_mode_image {
             get {
                 object obj = ResourceManager.GetObject("pla_mode_image", resourceCulture);
