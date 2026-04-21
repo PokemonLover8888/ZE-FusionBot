@@ -427,7 +427,18 @@ public class PokeTradeBotLA(PokeTradeHub<PA8> Hub, PokeBotState Config) : PokeRo
                 {
                     if (Hub.Config.Legality.UseTradePartnerInfo && !poke.IgnoreAutoOT && cachedTradePartner != null)
                     {
+                        var origLang = toSend.Language;
+                        var cfgLang = (int)Hub.Config.Legality.GenerateLanguage;
+                        bool hasExplLang = origLang != cfgLang && origLang >= 1 && origLang <= 12;
+
                         toSend = await ApplyAutoOT(toSend, cachedTradePartner, sav, token);
+
+                        if (hasExplLang && toSend.Language != origLang)
+                        {
+                            toSend.Language = origLang;
+                            toSend.RefreshChecksum();
+                            await SetBoxPokemonAbsolute(BoxStartOffset, toSend, token, sav).ConfigureAwait(false);
+                        }
                         tradesToProcess[currentTradeIndex] = toSend; // Update the list
                     }
                     await SetBoxPokemonAbsolute(BoxStartOffset, toSend, token, sav).ConfigureAwait(false);
@@ -523,7 +534,18 @@ public class PokeTradeBotLA(PokeTradeHub<PA8> Hub, PokeBotState Config) : PokeRo
                 // Apply AutoOT for first trade if needed
                 if (Hub.Config.Legality.UseTradePartnerInfo && !poke.IgnoreAutoOT)
                 {
+                    var origLang = toSend.Language;
+                    var cfgLang = (int)Hub.Config.Legality.GenerateLanguage;
+                    bool hasExplLang = origLang != cfgLang && origLang >= 1 && origLang <= 12;
+
                     toSend = await ApplyAutoOT(toSend, tradePartner, sav, token);
+
+                    if (hasExplLang && toSend.Language != origLang)
+                    {
+                        toSend.Language = origLang;
+                        toSend.RefreshChecksum();
+                        await SetBoxPokemonAbsolute(BoxStartOffset, toSend, token, sav).ConfigureAwait(false);
+                    }
                     poke.TradeData = toSend;
                     if (toSend.Species != 0)
                         await SetBoxPokemonAbsolute(BoxStartOffset, toSend, token, sav).ConfigureAwait(false);
@@ -831,7 +853,18 @@ public class PokeTradeBotLA(PokeTradeHub<PA8> Hub, PokeBotState Config) : PokeRo
 
         if (Hub.Config.Legality.UseTradePartnerInfo && !poke.IgnoreAutoOT)
         {
+            var origLang = toSend.Language;
+            var cfgLang = (int)Hub.Config.Legality.GenerateLanguage;
+            bool hasExplLang = origLang != cfgLang && origLang >= 1 && origLang <= 12;
+
             toSend = await ApplyAutoOT(toSend, tradePartner, sav, token);
+
+            if (hasExplLang && toSend.Language != origLang)
+            {
+                toSend.Language = origLang;
+                toSend.RefreshChecksum();
+                await SetBoxPokemonAbsolute(BoxStartOffset, toSend, token, sav).ConfigureAwait(false);
+            }
         }
 
         // Check if the offered Pokemon will evolve upon trade BEFORE confirming
@@ -1423,7 +1456,8 @@ public class PokeTradeBotLA(PokeTradeHub<PA8> Hub, PokeBotState Config) : PokeRo
             cln.OriginalTrainerGender = tradePartner.Gender;
             cln.TrainerTID7 = uint.Parse(tradePartner.TID7);
             cln.TrainerSID7 = uint.Parse(tradePartner.SID7);
-            cln.OriginalTrainerName = tradePartner.TrainerName;
+            string mgOtName = Helpers.LanguageHelper.TruncateOTName(tradePartner.TrainerName, cln.Language);
+            cln.OriginalTrainerName = mgOtName;
         }
         else
         {
@@ -1432,19 +1466,15 @@ public class PokeTradeBotLA(PokeTradeHub<PA8> Hub, PokeBotState Config) : PokeRo
             cln.TrainerTID7 = uint.Parse(tradePartner.TID7);
             cln.TrainerSID7 = uint.Parse(tradePartner.SID7);
 
-            // Only override language if Pokemon has default/config language
-            // If user explicitly requested a different language, preserve it
-            var configLanguage = (int)legalitySettings.GenerateLanguage;
-            if (toSend.Language != configLanguage && toSend.Language >= 1 && toSend.Language <= 12)
-            {
-                cln.Language = toSend.Language; // Preserve explicitly requested language
-            }
+            // Preserve toSend.Language if valid (1-12), otherwise fall back to trade partner language
+            int originalLanguage = toSend.Language;
+            if (originalLanguage < 1 || originalLanguage > 12)
+                cln.Language = tradePartner.Language;
             else
-            {
-                cln.Language = tradePartner.Language; // Use trade partner's language
-            }
+                cln.Language = originalLanguage;
 
-            cln.OriginalTrainerName = tradePartner.TrainerName;
+            string otName = Helpers.LanguageHelper.TruncateOTName(tradePartner.TrainerName, cln.Language);
+            cln.OriginalTrainerName = otName;
         }
 
         ClearOTTrash(cln, tradePartner.TrainerName);

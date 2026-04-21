@@ -403,7 +403,18 @@ public class PokeTradeBotSWSH(PokeTradeHub<PK8> hub, PokeBotState config) : Poke
             // Apply AutoOT if needed
             if (hub.Config.Legality.UseTradePartnerInfo && !poke.IgnoreAutoOT)
             {
+                var origLang = toSend.Language;
+                var cfgLang = (int)hub.Config.Legality.GenerateLanguage;
+                bool hasExplLang = origLang != cfgLang && origLang >= 1 && origLang <= 12;
+
                 toSend = await ApplyAutoOT(toSend, trainerName, sav, token);
+
+                if (hasExplLang && toSend.Language != origLang)
+                {
+                    toSend.Language = origLang;
+                    toSend.RefreshChecksum();
+                    await SetBoxPokemon(toSend, 0, 0, token, sav).ConfigureAwait(false);
+                }
                 tradesToProcess[currentTradeIndex] = toSend;
             }
 
@@ -816,7 +827,18 @@ public class PokeTradeBotSWSH(PokeTradeHub<PK8> hub, PokeBotState config) : Poke
 
         if (hub.Config.Legality.UseTradePartnerInfo && !poke.IgnoreAutoOT)
         {
+            var origLang = toSend.Language;
+            var cfgLang = (int)hub.Config.Legality.GenerateLanguage;
+            bool hasExplLang = origLang != cfgLang && origLang >= 1 && origLang <= 12;
+
             toSend = await ApplyAutoOT(toSend, trainerName, sav, token);
+
+            if (hasExplLang && toSend.Language != origLang)
+            {
+                toSend.Language = origLang;
+                toSend.RefreshChecksum();
+                await SetBoxPokemon(toSend, 0, 0, token, sav).ConfigureAwait(false);
+            }
         }
 
         // Confirm Box 1 Slot 1
@@ -1715,7 +1737,8 @@ public class PokeTradeBotSWSH(PokeTradeHub<PK8> hub, PokeBotState config) : Poke
             cln.OriginalTrainerGender = data[6];
             cln.TrainerTID7 = tidsid % 1_000_000;
             cln.TrainerSID7 = tidsid / 1_000_000;
-            cln.OriginalTrainerName = trainerName;
+            string mgOtName = Helpers.LanguageHelper.TruncateOTName(trainerName, cln.Language);
+            cln.OriginalTrainerName = mgOtName;
         }
         else
         {
@@ -1724,19 +1747,14 @@ public class PokeTradeBotSWSH(PokeTradeHub<PK8> hub, PokeBotState config) : Poke
             cln.TrainerTID7 = tidsid % 1_000_000;
             cln.TrainerSID7 = tidsid / 1_000_000;
 
-            // Only override language if Pokemon has default/config language
-            // If user explicitly requested a different language, preserve it
-            var configLanguage = (int)legalitySettings.GenerateLanguage;
-            if (toSend.Language != configLanguage && toSend.Language >= 1 && toSend.Language <= 12)
-            {
-                cln.Language = toSend.Language; // Preserve explicitly requested language
-            }
+            int originalLanguage = toSend.Language;
+            if (originalLanguage < 1 || originalLanguage > 12)
+                cln.Language = data[5]; // Use trade partner's language if invalid
             else
-            {
-                cln.Language = data[5]; // Use trade partner's language
-            }
+                cln.Language = originalLanguage; // Preserve user's requested language
 
-            cln.OriginalTrainerName = trainerName;
+            string otName = Helpers.LanguageHelper.TruncateOTName(trainerName, cln.Language);
+            cln.OriginalTrainerName = otName;
         }
 
         ClearOTTrash(cln, trainerName);
@@ -1745,11 +1763,19 @@ public class PokeTradeBotSWSH(PokeTradeHub<PK8> hub, PokeBotState config) : Poke
             cln.ClearNickname();
 
         if (toSend.IsShiny)
+        {
             cln.PID = (uint)((cln.TID16 ^ cln.SID16 ^ (cln.PID & 0xFFFF) ^ toSend.ShinyXor) << 16) | (cln.PID & 0xFFFF);
+            if (!cln.IsShiny)
+            {
+                Log("[AutoOT Shiny] PID recalc lost shiny in SWSH! Forcing shiny back.");
+                cln.SetIsShiny(true);
+            }
+        }
 
         if (!toSend.ChecksumValid)
             cln.RefreshChecksum();
 
+        cln.RefreshChecksum();
         var tradeswsh = new LegalityAnalysis(cln);
         if (tradeswsh.Valid)
         {

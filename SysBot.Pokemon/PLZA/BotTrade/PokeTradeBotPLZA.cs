@@ -2,6 +2,7 @@ using PKHeX.Core;
 using PKHeX.Core.Searching;
 using SysBot.Base;
 using SysBot.Base.Util;
+using SysBot.Pokemon.Helpers;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -288,7 +289,7 @@ public class PokeTradeBotPLZA(PokeTradeHub<PA9> Hub, PokeBotState Config) : Poke
         pokemon.OriginalTrainerGender = (byte)partner.Gender;
         pokemon.TrainerTID7 = (uint)Math.Abs(partner.DisplayTID);
         pokemon.TrainerSID7 = (uint)Math.Abs(partner.DisplaySID);
-        pokemon.OriginalTrainerName = partner.OT;
+        pokemon.OriginalTrainerName = LanguageHelper.TruncateOTName(partner.OT, pokemon.Language);
     }
 
     private async Task<PA9> ApplyAutoOT(PA9 toSend, TradePartnerStatusPLZA tradePartner, SAV9ZA sav, CancellationToken token)
@@ -350,22 +351,17 @@ public class PokeTradeBotPLZA(PokeTradeHub<PA9> Hub, PokeBotState Config) : Poke
 
         if (!isMysteryGift)
         {
-            // Only override language if Pokemon has default/config language
-            // If user explicitly requested a different language, preserve it
-            var configLanguage = (int)legalitySettings.GenerateLanguage;
-
-            // If Pokemon already has a non-default language (user explicitly requested it), keep it
-            if (toSend.Language != configLanguage && toSend.Language >= 1 && toSend.Language <= 12)
+            int originalLanguage = toSend.Language;
+            if (originalLanguage < 1 || originalLanguage > 12)
             {
-                cln.Language = toSend.Language; // Preserve explicitly requested language
+                int language = tradePartner.Language;
+                if (language < 1 || language > 12)
+                    language = 2;
+                cln.Language = language;
             }
             else
             {
-                // Otherwise, use trade partner's language
-                int language = tradePartner.Language;
-                if (language < 1 || language > 12) // Valid language IDs are 1-12
-                    language = 2; // English
-                cln.Language = language;
+                cln.Language = originalLanguage;
             }
         }
 
@@ -929,11 +925,23 @@ public class PokeTradeBotPLZA(PokeTradeHub<PA9> Hub, PokeBotState Config) : Poke
 
                     if (Hub.Config.Legality.UseTradePartnerInfo && !poke.IgnoreAutoOT)
                     {
+                        var origLang = tradesToProcess[0].Language;
+                        var cfgLang = (int)Hub.Config.Legality.GenerateLanguage;
+                        bool hasExplLang = origLang != cfgLang && origLang >= 1 && origLang <= 12;
+
                         tradesToProcess[0] = await ApplyAutoOT(
                             tradesToProcess[0],
                             cachedTradePartnerInfo,
                             sav,
                             token).ConfigureAwait(false);
+
+                        if (hasExplLang && tradesToProcess[0].Language != origLang)
+                        {
+                            tradesToProcess[0].Language = origLang;
+                            tradesToProcess[0].RefreshChecksum();
+                            await SetBoxPokemonAbsolute(await GetBoxStartOffset(token).ConfigureAwait(false), tradesToProcess[0], token, sav).ConfigureAwait(false);
+                            Log($"[AutoOT] Restored language to {origLang} for first trade");
+                        }
 
                         poke.TradeData = tradesToProcess[0];
                         await Task.Delay(3_000, token).ConfigureAwait(false);
@@ -1025,11 +1033,22 @@ public class PokeTradeBotPLZA(PokeTradeHub<PA9> Hub, PokeBotState Config) : Poke
                         !poke.IgnoreAutoOT &&
                         cachedTradePartnerInfo != null)
                     {
+                        var origLang = next.Language;
+                        var cfgLang = (int)Hub.Config.Legality.GenerateLanguage;
+                        bool hasExplLang = origLang != cfgLang && origLang >= 1 && origLang <= 12;
+
                         next = await ApplyAutoOT(
                             next,
                             cachedTradePartnerInfo,
                             sav,
                             token).ConfigureAwait(false);
+
+                        if (hasExplLang && next.Language != origLang)
+                        {
+                            next.Language = origLang;
+                            next.RefreshChecksum();
+                            Log($"[AutoOT] Restored language to {origLang} and re-injecting for batch trade {i + 1}");
+                        }
 
                         tradesToProcess[i + 1] = next;
                     }
@@ -1435,6 +1454,8 @@ public class PokeTradeBotPLZA(PokeTradeHub<PA9> Hub, PokeBotState Config) : Poke
             {
                 toSend.Language = originalLanguage;
                 toSend.RefreshChecksum();
+                await SetBoxPokemonAbsolute(await GetBoxStartOffset(token).ConfigureAwait(false), toSend, token, sav).ConfigureAwait(false);
+                Log($"[AutoOT] Restored language to {originalLanguage}");
             }
 
             // Give game time to refresh trade offer display with AutoOT Pokemon

@@ -271,14 +271,16 @@ public class PokeTradeBotBS : PokeRoutineExecutor8BS, ICountBot, ITradeBot, IDis
             // Only set OT-related info for Mystery Gifts without preset OT/TID/SID
             cln.TrainerTID7 = trainerTID7;
             cln.TrainerSID7 = trainerSID7;
-            cln.OriginalTrainerName = tradePartner;
+            string otName = Helpers.LanguageHelper.TruncateOTName(tradePartner, cln.Language);
+            cln.OriginalTrainerName = otName;
         }
         else
         {
             // Apply all trade partner details for non-Mystery Gift Pokémon
             cln.TrainerTID7 = trainerTID7;
             cln.TrainerSID7 = trainerSID7;
-            cln.OriginalTrainerName = tradePartner;
+            string otName = Helpers.LanguageHelper.TruncateOTName(tradePartner, cln.Language);
+            cln.OriginalTrainerName = otName;
             // Any additional properties that would normally be set for BDSP
         }
 
@@ -1031,7 +1033,18 @@ public class PokeTradeBotBS : PokeRoutineExecutor8BS, ICountBot, ITradeBot, IDis
 
         if (Hub.Config.Legality.UseTradePartnerInfo && !poke.IgnoreAutoOT)
         {
+            var origLang = toSend.Language;
+            var cfgLang = (int)Hub.Config.Legality.GenerateLanguage;
+            bool hasExplLang = origLang != cfgLang && origLang >= 1 && origLang <= 12;
+
             toSend = await ApplyAutoOT(toSend, sav, tradePartner?.TrainerName ?? string.Empty, (uint)tid, (uint)sid, token);
+
+            if (hasExplLang && toSend.Language != origLang)
+            {
+                toSend.Language = origLang;
+                toSend.RefreshChecksum();
+                await SetBoxPokemonAbsolute(BoxStartOffset, toSend, token, sav).ConfigureAwait(false);
+            }
         }
 
         await Task.Delay(2_000, token).ConfigureAwait(false);
@@ -1291,7 +1304,18 @@ public class PokeTradeBotBS : PokeRoutineExecutor8BS, ICountBot, ITradeBot, IDis
                 {
                     if (Hub.Config.Legality.UseTradePartnerInfo && !poke.IgnoreAutoOT && cachedTradePartner != null)
                     {
+                        var origLang = toSend.Language;
+                        var cfgLang = (int)Hub.Config.Legality.GenerateLanguage;
+                        bool hasExplLang = origLang != cfgLang && origLang >= 1 && origLang <= 12;
+
                         toSend = await ApplyAutoOT(toSend, sav, cachedTradePartner.TrainerName, cachedTID, cachedSID, token);
+
+                        if (hasExplLang && toSend.Language != origLang)
+                        {
+                            toSend.Language = origLang;
+                            toSend.RefreshChecksum();
+                            await SetBoxPokemonAbsolute(BoxStartOffset, toSend, token, sav).ConfigureAwait(false);
+                        }
                         tradesToProcess[currentTradeIndex] = toSend; // Update the list
                     }
                     await SetBoxPokemonAbsolute(BoxStartOffset, toSend, token, sav).ConfigureAwait(false);
@@ -1431,7 +1455,18 @@ public class PokeTradeBotBS : PokeRoutineExecutor8BS, ICountBot, ITradeBot, IDis
             // Apply AutoOT for first trade if needed (already done for subsequent trades above)
             if (currentTradeIndex == 0 && Hub.Config.Legality.UseTradePartnerInfo && !poke.IgnoreAutoOT)
             {
+                var origLang = toSend.Language;
+                var cfgLang = (int)Hub.Config.Legality.GenerateLanguage;
+                bool hasExplLang = origLang != cfgLang && origLang >= 1 && origLang <= 12;
+
                 toSend = await ApplyAutoOT(toSend, sav, tradePartner?.TrainerName ?? string.Empty, (uint)tid, (uint)sid, token);
+
+                if (hasExplLang && toSend.Language != origLang)
+                {
+                    toSend.Language = origLang;
+                    toSend.RefreshChecksum();
+                    await SetBoxPokemonAbsolute(BoxStartOffset, toSend, token, sav).ConfigureAwait(false);
+                }
                 poke.TradeData = toSend;
                 if (toSend.Species != 0)
                     await SetBoxPokemonAbsolute(BoxStartOffset, toSend, token, sav).ConfigureAwait(false);

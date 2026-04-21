@@ -57,15 +57,59 @@ public static class LanguageHelper
         return detectedLanguage;
     }
 
-    // NOTE: This method is no longer used. We generate Pokemon with the normal trainer
-    // and set the language AFTER generation to avoid encounter matching issues.
-    // Kept for reference only.
-    /*
     public static ITrainerInfo GetTrainerInfoWithLanguage<T>(LanguageID language) where T : PKM, new()
     {
-        // This approach caused "No valid matching encounter" errors
-        // because ALM couldn't find encounters with language-specific trainers
-        return AutoLegalityWrapper.GetTrainerInfo<T>();
+        return typeof(T) switch
+        {
+            Type t when t == typeof(PK8) => TrainerSettings.GetSavedTrainerData(GameVersion.SWSH, language),
+            Type t when t == typeof(PB8) => TrainerSettings.GetSavedTrainerData(GameVersion.BDSP, language),
+            Type t when t == typeof(PA8) => TrainerSettings.GetSavedTrainerData(GameVersion.PLA, language),
+            Type t when t == typeof(PK9) => TrainerSettings.GetSavedTrainerData(GameVersion.SV, language),
+            Type t when t == typeof(PA9) => TrainerSettings.GetSavedTrainerData(GameVersion.ZA, language),
+            Type t when t == typeof(PB7) => TrainerSettings.GetSavedTrainerData(GameVersion.GE, language),
+            _ => throw new ArgumentException("Type does not have a recognized trainer fetch.", typeof(T).Name)
+        };
     }
-    */
+
+    /// <summary>
+    /// Determines if a language uses Asian characters (which have a 6-character limit for OT names).
+    /// </summary>
+    public static bool IsAsianLanguage(LanguageID lang)
+    {
+        return lang is LanguageID.Japanese or LanguageID.Korean or LanguageID.ChineseS or LanguageID.ChineseT;
+    }
+
+    /// <summary>
+    /// Determines if a language uses Asian characters based on language code.
+    /// </summary>
+    public static bool IsAsianLanguage(int languageCode)
+    {
+        return languageCode is 1 or 8 or 9 or 10; // Japanese, Korean, ChineseS, ChineseT
+    }
+
+    /// <summary>
+    /// Truncates OT name to the appropriate length based on language.
+    /// Asian languages (Japanese, Korean, Chinese) have a 6-character limit.
+    /// Latin-based languages have a 12-character limit.
+    /// </summary>
+    public static string TruncateOTName(string otName, LanguageID language)
+    {
+        if (string.IsNullOrEmpty(otName))
+            return otName;
+
+        int maxLength = IsAsianLanguage(language) ? 6 : 12;
+        return otName.Length > maxLength ? otName[..maxLength] : otName;
+    }
+
+    /// <summary>
+    /// Truncates OT name to the appropriate length based on language code.
+    /// </summary>
+    public static string TruncateOTName(string otName, int languageCode)
+    {
+        if (string.IsNullOrEmpty(otName))
+            return otName;
+
+        int maxLength = IsAsianLanguage(languageCode) ? 6 : 12;
+        return otName.Length > maxLength ? otName[..maxLength] : otName;
+    }
 }
