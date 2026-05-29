@@ -14,7 +14,7 @@
   <PropertyGroup>
     <PackageId>SysBot.Pokemon.WinForms</PackageId>
     <Description>Nintendo Switch Pokémon Bot Manager</Description>
-    <ApplicationIcon>icon.ico</ApplicationIcon>
+    <ApplicationIcon>pokeball.ico</ApplicationIcon>
     <StartupObject>SysBot.Pokemon.WinForms.Program</StartupObject>
     <Version>01.00.00</Version>
     <GenerateResourceUsePreserializedResources>true</GenerateResourceUsePreserializedResources>

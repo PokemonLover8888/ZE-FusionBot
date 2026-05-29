@@ -222,7 +222,7 @@ namespace SysBot.Pokemon.Discord
                 .WithAuthor(new EmbedAuthorBuilder()
                     .WithName($"Mystery Egg for {context.User.Username}")
                     .WithIconUrl(context.User.GetAvatarUrl() ?? context.User.GetDefaultAvatarUrl())
-                    .WithUrl("https://genpkm.com"));
+                    .WithUrl("https://creator.pkm-universe.com/trade-hub-ultimate.html"));
 
             return embedBuilder.Build();
         }

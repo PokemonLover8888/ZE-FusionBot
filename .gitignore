@@ -360,3 +360,38 @@ bots/
 .claude/
 .wrangler/
 *.port
+
+# ── PKM Universe: never commit secrets or redundant binaries ──
+# Bot configs carry live Discord tokens
+bot-configs/
+**/config.json
+**/tradecodes.json
+# Redundant PKHeX.Core DLL backups (18-27 MB each)
+*.dll.bak2
+*.dll.orig
+*.dll.disabled
+*.dll.*-bak
+*.dll.*-secpatched-bak
+# Session + junk artifacts
+CLAUDE-SESSION-ID.txt
+*api-status.json
+*_egg_preview.png
+*_preview.png
+/nul
+
+# ── PKM Universe: build/publish output + dev artifacts (not source) ──
+publish-fd/
+publish-fdd/
+publish-fdd-multi/
+publish-sc/
+publish-output/
+working-dlls/
+upstream-release/
+floating-sprites/
+sparkle-demo-project/
+
+# ── PKM Universe: ALL publish/output experiment folders (220MB+ EXEs each) ──
+publish*/
+publishout/
+pkm-universe-publish/
+*.exe

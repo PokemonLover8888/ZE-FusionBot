@@ -41,7 +41,22 @@ public class BotInstance
     public bool IsOnline { get; set; }
     public bool IsMaster { get; set; }
     public string? ProcessPath { get; set; }
-    
+
+    /// <summary>True iff Discord gateway is connected and logged in.</summary>
+    public bool DiscordConnected { get; set; }
+
+    /// <summary>Latency to Discord (ms). -1 = no current session.</summary>
+    public int DiscordLatencyMs { get; set; } = -1;
+
+    /// <summary>True iff at least one configured Switch console is reachable
+    /// and the bot routine isn't STOPPED/FAULTED.</summary>
+    public bool SwitchReady { get; set; }
+
+    /// <summary>True iff a real user could request a trade right now:
+    /// IsOnline AND DiscordConnected AND SwitchReady.
+    /// Aggregators should count this — not IsOnline.</summary>
+    public bool TradeReady { get; set; }
+
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public List<BotStatusInfo>? BotStatuses { get; set; }
 }

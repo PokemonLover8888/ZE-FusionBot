@@ -231,8 +231,24 @@ public class PokeTradeBotBS : PokeRoutineExecutor8BS, ICountBot, ITradeBot, IDis
 
         if (toSend is IHomeTrack pk && pk.HasTracker)
         {
-            Log("Home tracker detected. Can't apply AutoOT.");
-            return toSend;
+            // BDSP native catches (met loc < 30000) shouldn't have a HOME tracker —
+            // they're wild static encounters (Newmoon Island Darkrai, Fullmoon Island
+            // Cresselia, Ramanas Park slates, Spear Pillar Dialga/Palkia, etc.), not
+            // HOME imports. Some upstream layers may auto-add a tracker anyway. Strip
+            // it here so AutoOT can proceed instead of refusing the swap and shipping
+            // the bot's default OT ("Dude") to the recipient.
+            bool isBDSPNativeForAutoOT = toSend.MetLocation is > 0 and < 30000;
+            if (isBDSPNativeForAutoOT)
+            {
+                pk.Tracker = 0;
+                toSend.RefreshChecksum();
+                Log("Stripped HOME tracker from BDSP native catch to allow AutoOT.");
+            }
+            else
+            {
+                Log("Home tracker detected. Can't apply AutoOT.");
+                return toSend;
+            }
         }
 
         // Current handler cannot be past gen OT
@@ -242,8 +258,14 @@ public class PokeTradeBotBS : PokeRoutineExecutor8BS, ICountBot, ITradeBot, IDis
             return toSend;
         }
 
-        // Check if the Pokémon is from a Mystery Gift
-        bool isMysteryGift = toSend.FatefulEncounter;
+        // Check if the Pokémon is from a Mystery Gift. FatefulEncounter alone isn't
+        // sufficient — BDSP's static legendary encounters (Newmoon Island Darkrai,
+        // Fullmoon Island Cresselia, Ramanas Park Mystery Slate Pokemon, Spear Pillar
+        // Dialga/Palkia, etc.) all set FatefulEncounter=true but are NATIVE wild
+        // static catches that DO support AutoOT. Only treat as Mystery Gift when the
+        // file is also HOME-transferred (met loc ≥ 30000), which indicates a true
+        // event-distributed Pokemon with preset OT/TID/SID from an external source.
+        bool isMysteryGift = toSend.FatefulEncounter && toSend.MetLocation >= 30000;
 
         // Check if Mystery Gift has legitimate preset OT/TID/SID (not configured defaults or ALM's defaults)
         // Use the actual configured values from LegalitySettings, not hardcoded defaults
@@ -271,17 +293,24 @@ public class PokeTradeBotBS : PokeRoutineExecutor8BS, ICountBot, ITradeBot, IDis
             // Only set OT-related info for Mystery Gifts without preset OT/TID/SID
             cln.TrainerTID7 = trainerTID7;
             cln.TrainerSID7 = trainerSID7;
-            string otName = Helpers.LanguageHelper.TruncateOTName(tradePartner, cln.Language);
-            cln.OriginalTrainerName = otName;
+            cln.OriginalTrainerName = tradePartner;
         }
         else
         {
             // Apply all trade partner details for non-Mystery Gift Pokémon
             cln.TrainerTID7 = trainerTID7;
             cln.TrainerSID7 = trainerSID7;
-            string otName = Helpers.LanguageHelper.TruncateOTName(tradePartner, cln.Language);
-            cln.OriginalTrainerName = otName;
+            cln.OriginalTrainerName = tradePartner;
             // Any additional properties that would normally be set for BDSP
+
+            // EXPERIMENTAL: Force HandlingTrainerLanguage to match the Pokemon's language when foreign
+            // language is requested. The game may use HT_Language for the visual tag when CurrentHandler=1.
+            bool hasExplicitForeignLang_LangFix = toSend.Language != (int)legalitySettings.GenerateLanguage && toSend.Language >= 1 && toSend.Language <= 12;
+            if (hasExplicitForeignLang_LangFix)
+            {
+                cln.HandlingTrainerLanguage = (byte)cln.Language;
+                Log($"[LANG-EXPERIMENT] Set HandlingTrainerLanguage={cln.HandlingTrainerLanguage} to match Language={cln.Language}");
+            }
         }
 
         ClearOTTrash(cln, tradePartner);
@@ -298,12 +327,14 @@ public class PokeTradeBotBS : PokeRoutineExecutor8BS, ICountBot, ITradeBot, IDis
         var tradeBS = new LegalityAnalysis(cln);
         if (tradeBS.Valid)
         {
+            Log($"[AUTO-OT DIAG] Pre-inject cln OT='{cln.OriginalTrainerName}' TID={cln.TID16} SID={cln.SID16} (partner expected='{tradePartner}' TID={trainerTID7} SID={trainerSID7})");
             Log("Pokemon is valid with Trade Partner Info applied. Swapping details.");
             await SetBoxPokemonAbsolute(BoxStartOffset, cln, token, sav).ConfigureAwait(false);
             return cln;
         }
         else
         {
+            Log($"[AUTO-OT DIAG] Legality FAILED for cln OT='{cln.OriginalTrainerName}' TID={cln.TID16} — falling back to toSend (OT='{toSend.OriginalTrainerName}'). Report: {tradeBS.Report().Replace("\n", " | ")}");
             Log("Pokemon not valid after using Trade Partner Info.");
             await SetBoxPokemonAbsolute(BoxStartOffset, cln, token, sav).ConfigureAwait(false);
             return toSend;
@@ -1033,18 +1064,7 @@ public class PokeTradeBotBS : PokeRoutineExecutor8BS, ICountBot, ITradeBot, IDis
 
         if (Hub.Config.Legality.UseTradePartnerInfo && !poke.IgnoreAutoOT)
         {
-            var origLang = toSend.Language;
-            var cfgLang = (int)Hub.Config.Legality.GenerateLanguage;
-            bool hasExplLang = origLang != cfgLang && origLang >= 1 && origLang <= 12;
-
             toSend = await ApplyAutoOT(toSend, sav, tradePartner?.TrainerName ?? string.Empty, (uint)tid, (uint)sid, token);
-
-            if (hasExplLang && toSend.Language != origLang)
-            {
-                toSend.Language = origLang;
-                toSend.RefreshChecksum();
-                await SetBoxPokemonAbsolute(BoxStartOffset, toSend, token, sav).ConfigureAwait(false);
-            }
         }
 
         await Task.Delay(2_000, token).ConfigureAwait(false);
@@ -1304,18 +1324,7 @@ public class PokeTradeBotBS : PokeRoutineExecutor8BS, ICountBot, ITradeBot, IDis
                 {
                     if (Hub.Config.Legality.UseTradePartnerInfo && !poke.IgnoreAutoOT && cachedTradePartner != null)
                     {
-                        var origLang = toSend.Language;
-                        var cfgLang = (int)Hub.Config.Legality.GenerateLanguage;
-                        bool hasExplLang = origLang != cfgLang && origLang >= 1 && origLang <= 12;
-
                         toSend = await ApplyAutoOT(toSend, sav, cachedTradePartner.TrainerName, cachedTID, cachedSID, token);
-
-                        if (hasExplLang && toSend.Language != origLang)
-                        {
-                            toSend.Language = origLang;
-                            toSend.RefreshChecksum();
-                            await SetBoxPokemonAbsolute(BoxStartOffset, toSend, token, sav).ConfigureAwait(false);
-                        }
                         tradesToProcess[currentTradeIndex] = toSend; // Update the list
                     }
                     await SetBoxPokemonAbsolute(BoxStartOffset, toSend, token, sav).ConfigureAwait(false);
@@ -1455,18 +1464,7 @@ public class PokeTradeBotBS : PokeRoutineExecutor8BS, ICountBot, ITradeBot, IDis
             // Apply AutoOT for first trade if needed (already done for subsequent trades above)
             if (currentTradeIndex == 0 && Hub.Config.Legality.UseTradePartnerInfo && !poke.IgnoreAutoOT)
             {
-                var origLang = toSend.Language;
-                var cfgLang = (int)Hub.Config.Legality.GenerateLanguage;
-                bool hasExplLang = origLang != cfgLang && origLang >= 1 && origLang <= 12;
-
                 toSend = await ApplyAutoOT(toSend, sav, tradePartner?.TrainerName ?? string.Empty, (uint)tid, (uint)sid, token);
-
-                if (hasExplLang && toSend.Language != origLang)
-                {
-                    toSend.Language = origLang;
-                    toSend.RefreshChecksum();
-                    await SetBoxPokemonAbsolute(BoxStartOffset, toSend, token, sav).ConfigureAwait(false);
-                }
                 poke.TradeData = toSend;
                 if (toSend.Species != 0)
                     await SetBoxPokemonAbsolute(BoxStartOffset, toSend, token, sav).ConfigureAwait(false);

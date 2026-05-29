@@ -246,10 +246,7 @@ public class PokeTradeBotSV(PokeTradeHub<PK9> Hub, PokeBotState Config) : PokeRo
             cln.OriginalTrainerGender = (byte)tradePartner.Gender;
             cln.TrainerTID7 = (uint)Math.Abs(tradePartner.DisplayTID);
             cln.TrainerSID7 = (uint)Math.Abs(tradePartner.DisplaySID);
-
-            // Truncate OT name based on language (Asian languages have 6-char limit, others 12-char)
-            string mgOtName = Helpers.LanguageHelper.TruncateOTName(tradePartner.OT, cln.Language);
-            cln.OriginalTrainerName = mgOtName;
+            cln.OriginalTrainerName = tradePartner.OT;
         }
         else
         {
@@ -257,21 +254,28 @@ public class PokeTradeBotSV(PokeTradeHub<PK9> Hub, PokeBotState Config) : PokeRo
             cln.TrainerTID7 = (uint)Math.Abs(tradePartner.DisplayTID);
             cln.TrainerSID7 = (uint)Math.Abs(tradePartner.DisplaySID);
 
-            // Preserve the originally requested language from the showdown set
-            // Only use trade partner's language if the original language is invalid
-            int originalLanguage = toSend.Language;
-            if (originalLanguage < 1 || originalLanguage > 12)
+            // Only override language if Pokemon has default/config language
+            // If user explicitly requested a different language, preserve it
+            var configLanguage = (int)legalitySettings.GenerateLanguage;
+            bool hasExplicitForeignLang = toSend.Language != configLanguage && toSend.Language >= 1 && toSend.Language <= 12;
+            if (hasExplicitForeignLang)
             {
-                cln.Language = tradePartner.Language;
+                cln.Language = toSend.Language; // Preserve explicitly requested language
             }
             else
             {
-                cln.Language = originalLanguage;
+                cln.Language = tradePartner.Language; // Use trade partner's language
             }
 
-            // Truncate OT name based on language (Asian languages have 6-char limit, others 12-char)
-            string otName = Helpers.LanguageHelper.TruncateOTName(tradePartner.OT, cln.Language);
-            cln.OriginalTrainerName = otName;
+            cln.OriginalTrainerName = tradePartner.OT;
+
+            // EXPERIMENTAL: Force HandlingTrainerLanguage to match the Pokemon's language when foreign
+            // language is requested. SV may use HT_Language for the visual tag when CurrentHandler=1.
+            if (hasExplicitForeignLang)
+            {
+                cln.HandlingTrainerLanguage = (byte)cln.Language;
+                Log($"[LANG-EXPERIMENT] Set HandlingTrainerLanguage={cln.HandlingTrainerLanguage} to match Language={cln.Language}");
+            }
         }
 
         ClearOTTrash(cln, tradePartner);
@@ -308,7 +312,6 @@ public class PokeTradeBotSV(PokeTradeHub<PK9> Hub, PokeBotState Config) : PokeRo
             Log($"[AutoOT Shiny] Recalculating PID for shiny. Original PID={toSend.PID:X8}, ShinyXor={toSend.ShinyXor}, New TID={cln.TID16}, New SID={cln.SID16}");
             cln.PID = (uint)((cln.TID16 ^ cln.SID16 ^ (cln.PID & 0xFFFF) ^ toSend.ShinyXor) << 16) | (cln.PID & 0xFFFF);
             Log($"[AutoOT Shiny] New PID={cln.PID:X8}, cln.IsShiny={cln.IsShiny}");
-            // If PID recalculation lost shiny, force it back
             if (!cln.IsShiny)
             {
                 Log("[AutoOT Shiny] PID recalc lost shiny! Forcing shiny back.");
@@ -324,13 +327,13 @@ public class PokeTradeBotSV(PokeTradeHub<PK9> Hub, PokeBotState Config) : PokeRo
         if (tradeSV.Valid)
         {
             Log($"Pokemon is valid, using trade partner info (AutoOT). IsShiny={cln.IsShiny}");
-            await SetBoxPokemonAbsolute(BoxStartOffset, cln, token, sav).ConfigureAwait(false);
+            // Pass null for sav to skip UpdateHandler — matches PLZA behavior which works for language tags
+            await SetBoxPokemonAbsolute(BoxStartOffset, cln, token, null).ConfigureAwait(false);
             return cln;
         }
         else
         {
             Log($"Trade Pokemon can't have AutoOT applied. Re-injecting original. IsShiny={toSend.IsShiny}. Report: {tradeSV.Report()}");
-            await SetBoxPokemonAbsolute(BoxStartOffset, toSend, token, sav).ConfigureAwait(false);
             return toSend;
         }
     }
@@ -1011,7 +1014,6 @@ public class PokeTradeBotSV(PokeTradeHub<PK9> Hub, PokeBotState Config) : PokeRo
                         {
                             toSend.Language = originalLanguage;
                             toSend.RefreshChecksum();
-                            await SetBoxPokemonAbsolute(BoxStartOffset, toSend, token, sav).ConfigureAwait(false);
                         }
 
                         tradesToProcess[currentTradeIndex] = toSend; // Update the list
@@ -1151,7 +1153,7 @@ public class PokeTradeBotSV(PokeTradeHub<PK9> Hub, PokeBotState Config) : PokeRo
                     return PokeTradeResult.TrainerTooSlow;
                 }
 
-                Log($"Found Link Trade partner: {tradePartner.TrainerName}-{tradePartner.TID7} (ID: {trainerNID})");
+                Log($"Found Link Trade partner: {tradePartner.TrainerName}-{tradePartner.TID7} (ID: {trainerNID}) GameLanguage={tradePartnerFullInfo.Language} Game={tradePartnerFullInfo.Game}");
                 TradeProgressChanged?.Invoke(64);
 
                 poke.SendNotification(this, $"Found Link Trade partner: {tradePartner.TrainerName}. **TID**: {tradePartner.TID7} **SID**: {tradePartner.SID7}");
@@ -1164,31 +1166,13 @@ public class PokeTradeBotSV(PokeTradeHub<PK9> Hub, PokeBotState Config) : PokeRo
                     var configLanguage = (int)Hub.Config.Legality.GenerateLanguage;
                     bool hasExplicitLanguage = originalLanguage != configLanguage && originalLanguage >= 1 && originalLanguage <= 12;
 
-                    var wasShiny = toSend.IsShiny;
                     toSend = await ApplyAutoOT(toSend, tradePartnerFullInfo, sav, token).ConfigureAwait(false);
-
-                    // CRITICAL: If the Pokemon was shiny before AutoOT but lost it, force it back
-                    if (wasShiny && !toSend.IsShiny)
-                    {
-                        Log($"[SHINY RESCUE] AutoOT stripped shiny from {(Species)toSend.Species}! Forcing shiny back.");
-                        toSend.SetIsShiny(true);
-                        toSend.RefreshChecksum();
-                        var rescueCheck = new LegalityAnalysis(toSend);
-                        if (!rescueCheck.Valid)
-                        {
-                            Log($"[SHINY RESCUE] SetIsShiny made it invalid, trying SetShiny(AlwaysStar)");
-                            toSend.SetShiny(Shiny.AlwaysStar);
-                            toSend.RefreshChecksum();
-                        }
-                        Log($"[SHINY RESCUE] Final IsShiny={toSend.IsShiny}");
-                    }
 
                     // Restore explicitly requested language if it was changed by AutoOT
                     if (hasExplicitLanguage && toSend.Language != originalLanguage)
                     {
                         toSend.Language = originalLanguage;
                         toSend.RefreshChecksum();
-                        await SetBoxPokemonAbsolute(BoxStartOffset, toSend, token, sav).ConfigureAwait(false);
                     }
 
                     poke.TradeData = toSend;

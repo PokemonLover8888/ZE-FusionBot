@@ -20,6 +20,43 @@ public static class Helpers<T> where T : PKM, new()
 {
     private static TradeQueueInfo<T> Info => SysCord<T>.Runner.Hub.Queues.Info;
 
+    // BDSP canonical legendary location IDs resolved on first use via PKHeX's
+    // own GetLocationName lookup (the bot's hardcoded dictionary had wrong IDs).
+    private static ushort _lakeVerityId, _lakeValorId, _lakeAcuityId;
+    private static ushort _fullmoonIslandId, _newmoonIslandId;
+    private static ushort _spearPillarId, _turnbackCaveId, _starkMountainId, _flowerParadiseId;
+    private static bool _bdspLocIdsResolved;
+    private static readonly object _bdspLocIdLock = new();
+
+    private static void ResolveBDSPLocationIds()
+    {
+        if (_bdspLocIdsResolved) return;
+        lock (_bdspLocIdLock)
+        {
+            if (_bdspLocIdsResolved) return;
+            var strings = GameInfo.Strings;
+            for (ushort id = 1; id < 700; id++)
+            {
+                string name;
+                try { name = strings.GetLocationName(false, id, 8, 8, GameVersion.BD); }
+                catch { continue; }
+                if (string.IsNullOrEmpty(name)) continue;
+                // Take only the first match for names that have "-2" duplicates in PKHeX's table.
+                if (_lakeVerityId == 0 && name == "Lake Verity") _lakeVerityId = id;
+                else if (_lakeValorId == 0 && name == "Lake Valor") _lakeValorId = id;
+                else if (_lakeAcuityId == 0 && name == "Lake Acuity") _lakeAcuityId = id;
+                else if (_fullmoonIslandId == 0 && name == "Fullmoon Island") _fullmoonIslandId = id;
+                else if (_newmoonIslandId == 0 && name == "Newmoon Island") _newmoonIslandId = id;
+                else if (_spearPillarId == 0 && name == "Spear Pillar") _spearPillarId = id;
+                else if (_turnbackCaveId == 0 && name == "Turnback Cave") _turnbackCaveId = id;
+                else if (_starkMountainId == 0 && name == "Stark Mountain") _starkMountainId = id;
+                else if (_flowerParadiseId == 0 && name == "Flower Paradise") _flowerParadiseId = id;
+            }
+            LogUtil.LogInfo($"[BDSP-LOC-RESOLVE] Verity={_lakeVerityId} Valor={_lakeValorId} Acuity={_lakeAcuityId} Fullmoon={_fullmoonIslandId} Newmoon={_newmoonIslandId} Spear={_spearPillarId} Turnback={_turnbackCaveId} Stark={_starkMountainId} FlowerP={_flowerParadiseId}", "Helpers");
+            _bdspLocIdsResolved = true;
+        }
+    }
+
     public static Task<bool> EnsureUserNotInQueueAsync(ulong userID, int deleteDelay = 2)
     {
         if (!Info.IsUserInQueue(userID))
@@ -125,23 +162,7 @@ public static class Helpers<T> where T : PKM, new()
 
     public static Task<ProcessedPokemonResult<T>> ProcessShowdownSetAsync(string content, bool ignoreAutoOT = false)
     {
-        // Auto-convert bullet points and other unicode dashes to standard dashes
-        // Users on mobile often paste with bullets (•) or em-dashes (—) which break parsing
-        content = content.Replace("•", "-").Replace("·", "-").Replace("—", "-").Replace("–", "-").Replace("‐", "-");
-
-        // Strip Discord blockquote prefixes "| " from each line (mobile copy/paste artifact)
-        // This was causing moves/nature/EVs to be silently ignored as invalid lines
-        var stripLines = content.Split('\n');
-        for (int i = 0; i < stripLines.Length; i++)
-        {
-            var trimmed = stripLines[i].TrimStart();
-            if (trimmed.StartsWith("| "))
-                stripLines[i] = trimmed.Substring(2);
-            else if (trimmed.StartsWith("|"))
-                stripLines[i] = trimmed.Substring(1);
-        }
-        content = string.Join('\n', stripLines);
-
+        content = ReusableActions.StripCodeBlock(content);
         bool isEgg = TradeExtensions<T>.IsEggCheck(content);
 
         // CRITICAL FIX: Extract language BEFORE parsing ShowdownSet
@@ -159,31 +180,25 @@ public static class Helpers<T> where T : PKM, new()
         var filteredLines = contentLines.Where(line =>
             !line.TrimStart().StartsWith("Language:", StringComparison.OrdinalIgnoreCase)
         ).ToArray();
+        var contentWithoutLanguage = string.Join('\n', filteredLines);
 
-        // Fix reversed nickname format: "(Species) Nickname" -> "Nickname (Species)"
-        // The Showdown parser expects "Nickname (Species)" format
-        if (filteredLines.Length > 0)
+        // Detect user-specified Tera Type (for SV non-native override fix)
+        MoveType? userSpecifiedTeraType = null;
+        var teraTypeLine = contentLines.FirstOrDefault(l => l.TrimStart().StartsWith("Tera Type:", StringComparison.OrdinalIgnoreCase));
+        if (teraTypeLine != null)
         {
-            var firstLine = filteredLines[0].Trim();
-            var reversedNickMatch = System.Text.RegularExpressions.Regex.Match(firstLine, @"^\(([^)]+)\)\s+(.+)$");
-            if (reversedNickMatch.Success)
+            var teraValue = teraTypeLine.Split(':').ElementAtOrDefault(1)?.Trim();
+            if (!string.IsNullOrEmpty(teraValue))
             {
-                var species = reversedNickMatch.Groups[1].Value.Trim();
-                var nickname = reversedNickMatch.Groups[2].Value.Trim();
-                // Check if the item (@) is in the nickname part
-                var atIndex = nickname.IndexOf('@');
-                string item = "";
-                if (atIndex >= 0)
-                {
-                    item = nickname.Substring(atIndex);
-                    nickname = nickname.Substring(0, atIndex).Trim();
-                }
-                filteredLines[0] = $"{nickname} ({species}){(item.Length > 0 ? " " + item : "")}";
-                LogUtil.LogInfo($"[Nickname Fix] Reversed format detected. Fixed: '{firstLine}' -> '{filteredLines[0]}'", "Helpers");
+                if (teraValue.Equals("Stellar", StringComparison.OrdinalIgnoreCase))
+                    userSpecifiedTeraType = (MoveType)TeraTypeUtil.Stellar;
+                else if (Enum.TryParse<MoveType>(teraValue, true, out var parsedTera))
+                    userSpecifiedTeraType = parsedTera;
             }
         }
 
-        var contentWithoutLanguage = string.Join('\n', filteredLines);
+        // Detect if user explicitly specified IVs (for 6IV default enforcement)
+        bool userSpecifiedIVs = contentLines.Any(l => l.TrimStart().StartsWith("IVs:", StringComparison.OrdinalIgnoreCase));
 
         // Now parse the ShowdownSet without the Language line
         if (!ShowdownParsing.TryParseAnyLanguage(contentWithoutLanguage, out ShowdownSet? set) || set == null || set.Species == 0)
@@ -195,43 +210,98 @@ public static class Helpers<T> where T : PKM, new()
             });
         }
 
-        LogUtil.LogInfo($"[ShowdownParse] Species={set.Species}, Shiny={set.Shiny}, Nickname='{set.Nickname}', FormName='{set.FormName}', Text='{set.Text.Replace("\n"," | ")}'", "Helpers");
+        var template = AutoLegalityWrapper.GetTemplate(set);
 
-        // EV/IV/Level validation is handled by the detailed legality error system after ALM.
-
-        // Reject shiny requests for species with no legal shiny distribution.
-        if (set.Shiny)
+        // Block shiny requests for species that have NEVER had a legitimate shiny
+        // distribution in any game — GO, HOME events, past wondercards, anywhere.
+        // Without this guard the pre-made fallback would load a non-shiny file and
+        // force-flip the PID to shiny, shipping a file that's illegal at every level
+        // (e.g. Cherish Ball Tohoku Pokemon Center Victini as "shiny").
+        if (template.Shiny && IsTrulyShinyLocked(template.Species))
         {
-            // Gen 9 shiny-locked (no legal shiny path, including events)
-            var svShinyLocked = new Dictionary<int, string>
+            var speciesName = GameInfo.Strings.Species[template.Species];
+            return Task.FromResult(new ProcessedPokemonResult<T>
             {
-                { 1009, "Walking Wake" },
-                { 1010, "Iron Leaves" },
-                { 1017, "Ogerpon" },
-                { 1024, "Terapagos" },
-                { 1025, "Pecharunt" },
-            };
-            // Gen 8 SWSH shiny-locked
-            var swshShinyLocked = new Dictionary<int, string>
-            {
-                { 893, "Zarude" },
-                { 898, "Calyrex" },
-            };
-            Dictionary<int, string>? activeLock = null;
-            if (typeof(T) == typeof(PK9) || typeof(T) == typeof(PA9)) activeLock = svShinyLocked;
-            else if (typeof(T) == typeof(PK8)) activeLock = swshShinyLocked;
+                Error = $"**{speciesName} cannot be Shiny.** {speciesName} is shiny-locked in every main series Pokémon game. There is no legal way to obtain a shiny {speciesName}.",
+                ShowdownSet = set
+            });
+        }
 
-            if (activeLock != null && activeLock.TryGetValue(set.Species, out var lockReason))
+        // Block shiny Crown Tundra legendaries on Z-A (PA9) bots — same root cause
+        // as the SV/BDSP shiny Deoxys block. Z-A native encounters for these species
+        // are shiny-locked (Hyperspace Sky Pillar / Lysandre Labs / etc.). We can
+        // route through SwSh Max Lair (shiny-eligible Crown Tundra DA encounter) and
+        // convert PK8 → PA9, BUT the resulting file needs a HOME tracker that HOME
+        // recognizes. Random/bot-generated trackers fail HOME's server-side validation;
+        // the file ships fine to the recipient's game but the game flags it
+        // "Non-Native, cannot enter HOME." Block at request time with a clear reason.
+        if (template.Shiny && typeof(T) == typeof(PA9)
+            && IsHomeRejectingShinyZALegendary(template.Species))
+        {
+            var speciesName = GameInfo.Strings.Species[template.Species];
+            return Task.FromResult(new ProcessedPokemonResult<T>
             {
+                Error = $"**Shiny {speciesName} can't be traded on Legends: Z-A bots.** {speciesName}'s Z-A native encounter is shiny-locked, so the bot has to route through SwSh Max Lair (Crown Tundra Dynamax Adventure). The resulting PA9 file works in-game but Z-A flags it as **Non-Native, cannot enter HOME** because the HOME tracker isn't one HOME's database recognizes (only real GO/HOME-extracted files have valid trackers). Until a real Z-A shiny {speciesName} source file is available, this combination can't be shipped. Request non-shiny, or try a different shiny species.",
+                ShowdownSet = set
+            });
+        }
+
+        // Block shiny requests for species whose only legitimate shiny path is GO →
+        // HOME transfer with a real HOME-issued tracker. Bot pre-made files are
+        // tool-generated, not extracted from real GO accounts, so HOME's server-side
+        // validation rejects them (error 10015 for GO-origin, 999 for LG-origin) even
+        // when PKHeX considers the file legal. Restrict to SV (PK9) and BDSP (PB8)
+        // where this has been empirically confirmed.
+        if (template.Shiny && (typeof(T) == typeof(PK9) || typeof(T) == typeof(PB8))
+            && IsHomeRejectingShinyMythical(template.Species))
+        {
+            var speciesName = GameInfo.Strings.Species[template.Species];
+            return Task.FromResult(new ProcessedPokemonResult<T>
+            {
+                Error = $"**Shiny {speciesName} cannot be traded on this bot.** Shiny {speciesName} only legitimately exists via Pokémon GO → HOME transfer with a real HOME tracker. Bot-generated files fail Pokémon HOME's server-side validation (error 10015 on deposit). Request a non-shiny instead.",
+                ShowdownSet = set
+            });
+        }
+
+        // Block shiny requests for species that are shiny-locked in Pokemon Legends: Z-A.
+        // These species may have legal shinies in OTHER games (GO transfers, past events,
+        // BDSP eggs) but Z-A specifically locks them. Without this check ALM picks a
+        // non-Z-A encounter source and ships the Pokemon as Non-Native — which is exactly
+        // what we don't want on a Z-A bot.
+        if (typeof(T) == typeof(PA9) && template.Shiny && IsZALockedShiny(template.Species))
+        {
+            var speciesName = GameInfo.Strings.Species[template.Species];
+            return Task.FromResult(new ProcessedPokemonResult<T>
+            {
+                Error = $"**{speciesName} cannot be Shiny in Pokemon Legends: Z-A.** This species is shiny-locked in Z-A. Even though shiny variants exist via GO transfers or past events, they cannot be legally traded into Z-A as shiny.\n\nUse `/guide shinylock` for the full per-game list.",
+                ShowdownSet = set
+            });
+        }
+
+        // Block requests for species/form combos where Z-A's native encounter is locked
+        // to a specific form. ALM picks an older-gen encounter for the requested form,
+        // which produces a PA9 the receiving Z-A game rejects at the Link Trade screen
+        // with "This trade can't be completed because there is a problem with your
+        // trade partner's Pokémon."
+        if (typeof(T) == typeof(PA9))
+        {
+            var formBlockReason = GetZAFormBlockReason(template.Species, template.Form);
+            if (formBlockReason != null)
+            {
+                var speciesName = GameInfo.Strings.Species[template.Species];
                 return Task.FromResult(new ProcessedPokemonResult<T>
                 {
-                    Error = $"**{lockReason}** is shiny-locked and cannot be traded as shiny.",
+                    Error = $"**This {speciesName} form cannot be traded on Pokémon Legends: Z-A.** {formBlockReason}",
                     ShowdownSet = set
                 });
             }
-        }
 
-        var template = AutoLegalityWrapper.GetTemplate(set);
+            // Z-A native Zygarde uses Power Construct ability, not Aura Break. ALM
+            // produces form 0/1 + Aura Break which Z-A's encounter signature rejects.
+            // We post-fix the PA9 after ALM in the generation block below, but flag
+            // the case here for log clarity. (set.Form is read-only on ShowdownSet,
+            // so we can't pre-fix the template — handled post-ALM instead.)
+        }
 
         // Filter out batch commands (.) and filters (~) from invalid lines - these are handled by ALM
         // Also filter out custom fields like Language: and Alpha: which are ALM-specific
@@ -253,42 +323,21 @@ public static class Helpers<T> where T : PKM, new()
             return true;
         }).ToList();
 
-        // Auto-fix: silently ignore invalid moves/items instead of failing the trade
-        // - Invalid moves are dropped (Pokemon can re-learn moves in-game with relearn enabled)
-        // - Invalid items are replaced with Ability Patch (worth $125k, sellable for any item)
         if (actualInvalidLines.Count != 0)
         {
-            LogUtil.LogInfo($"[AutoFix] Ignoring {actualInvalidLines.Count} invalid line(s): {string.Join(", ", actualInvalidLines.Select(l => l.Value))}", "Helpers");
-            // Continue anyway - ALM will skip the invalid moves/items during generation
-        }
-
-        // Use language-specific trainer for generation so all internal fields match
-        var sav = LanguageHelper.GetTrainerInfoWithLanguage<T>((LanguageID)finalLanguage);
-
-        // Fix for Asian languages: Truncate OT to 6 characters max
-        // Japanese, Korean, ChineseS, ChineseT only support 6 character OT names
-        if (finalLanguage == (byte)LanguageID.Japanese ||
-            finalLanguage == (byte)LanguageID.Korean ||
-            finalLanguage == (byte)LanguageID.ChineseS ||
-            finalLanguage == (byte)LanguageID.ChineseT)
-        {
-            if (sav.OT.Length > 6)
+            return Task.FromResult(new ProcessedPokemonResult<T>
             {
-                // Create a new trainer with truncated OT
-                var truncatedOT = sav.OT.Substring(0, 6);
-                sav = new SimpleTrainerInfo(sav.Version)
-                {
-                    OT = truncatedOT,
-                    TID16 = sav.TID16,
-                    SID16 = sav.SID16,
-                    Language = sav.Language,
-                    Generation = sav.Generation
-                };
-            }
+                Error = $"Unable to parse Showdown Set:\n{string.Join("\n", actualInvalidLines.Select(l => l.Value))}",
+                ShowdownSet = set
+            });
         }
 
-        PKM pkm;
-        string result;
+        // DON'T use language-specific trainer! It causes encounter errors.
+        // Generate with normal trainer (English), then set language after generation.
+        var sav = AutoLegalityWrapper.GetTrainerInfo<T>();
+
+        PKM? pkm = null;
+        string result = "";
 
         // Generate egg or normal pokemon based on isEgg flag
         if (isEgg)
@@ -299,592 +348,483 @@ public static class Helpers<T> where T : PKM, new()
             // Generate egg using ALM
             pkm = sav.GenerateEgg(regenTemplate, out var eggResult);
             result = eggResult.ToString();
-
-            // FIX: ALM doesn't always respect the ball from the content for eggs
-            // Manually parse and apply the ball if user specified one
-            if (pkm != null)
-            {
-                var ballLine = contentLines.FirstOrDefault(l => l.TrimStart().StartsWith("Ball:", StringComparison.OrdinalIgnoreCase));
-                if (ballLine != null)
-                {
-                    var ballName = ballLine.Split(':')[1].Trim().Replace(" ", string.Empty);
-                    var balls = GameInfo.Strings.balllist;
-                    int ballIndex = Array.FindIndex(balls, z => z.Replace(" ", string.Empty).Equals(ballName, StringComparison.OrdinalIgnoreCase));
-                    if (ballIndex > 0)
-                    {
-                        pkm.Ball = (byte)ballIndex;
-                        pkm.RefreshChecksum();
-                    }
-                }
-            }
         }
         else
         {
-            LogUtil.LogInfo($"[Generation] Species={template.Species}, Form={template.Form}, T={typeof(T).Name}, sav.Version={sav.Version}", "Helpers");
-            // Vivillon form workaround: ALM can only generate Meadow (form 6) in ZA.
-            // Force template to Meadow for generation, then fix the form afterwards.
-            if (template.Species == 666 && template.Form != 6 && typeof(T) == typeof(PA9))
+            // SwSh-only species requested for SV → adjust template to match a legal
+            // SwSh encounter, then route through PK8 → HOME → PK9. ALM can't legally
+            // generate these directly as PK9. Each species has fixed valid encounters:
+            //   Non-shiny = story level; Shiny = level 100 wondercard.
+            var swshEnc = GetSwShLegalEncounter(template.Species, template.Shiny);
+            bool isSwShOnly = swshEnc.HasValue;
+            bool needsSwShRouting = typeof(T) == typeof(PK9) && isSwShOnly;
+
+            // Z-A shiny Crown Tundra DA legendaries: Z-A native encounters at Hyperspace
+            // locations are shiny-locked. ALM's natural choice falls back to BDSP or other
+            // games with met locations like "Crystal Cavern" that Z-A flags as Non-Native
+            // (can't enter HOME). Force SwSh Max Lair (level 70, shiny-eligible Dynamax
+            // Adventure encounter) then convert PK8 → PA9 via HOME so the file gets a
+            // valid HOME tracker and Max Lair met location.
+            bool needsSwShToPa9 = typeof(T) == typeof(PA9) && template.Shiny
+                && IsCrownTundraDAShinyForZA(template.Species);
+            if (needsSwShToPa9)
             {
-                LogUtil.LogInfo($"[Vivillon] Overriding template form {template.Form} to Meadow (6) for generation", "Vivillon");
-                var showdownText = set.Text.Replace($"Vivillon-{set.FormName}", "Vivillon-Meadow");
-                if (showdownText == set.Text)
-                    showdownText = "Vivillon-Meadow\nLevel: 100";
-                var meadowSet = new ShowdownSet(showdownText);
-                var meadowTemplate = AutoLegalityWrapper.GetTemplate(meadowSet);
-                pkm = sav.GetLegal(meadowTemplate, out result);
+                swshEnc = (70, true, (byte?)null); // Max Lair: level 70, shiny-eligible
+                needsSwShRouting = true;
+                LogUtil.LogInfo($"[TradeModule] Z-A shiny {template.Species}: forcing SwSh Max Lair → HOME → PA9 routing", "Helpers");
             }
-            // Floette-Eternal: PKHeX now has proper Z-A encounter data, no workaround needed.
-            // Melmetal/Meltan in SWSH: ALM cannot generate GO-origin encounters.
-            // Build manually, bypassing ALM entirely. Skip legality for these specific species.
-            else if ((template.Species == 808 || template.Species == 809) && typeof(T) == typeof(PK8))
+
+            if (needsSwShRouting)
             {
-                var specName = template.Species == 809 ? "Melmetal" : "Meltan";
-                LogUtil.LogInfo($"[{specName}] Building manually - ALM cannot generate GO encounters", "Helpers");
+                var (legalLevel, legalShiny, legalForm) = swshEnc!.Value;
+                LogUtil.LogInfo($"[TradeModule] Species {template.Species}: forcing SwSh encounter (level={legalLevel}, shiny={legalShiny}) then routing through HOME", "Helpers");
 
-                var goMon = new PK8();
-                goMon.Species = (ushort)template.Species;
-                goMon.Form = 0;
-                goMon.Gender = 2; // Genderless
-                goMon.CurrentLevel = 100;
-                goMon.MetLevel = 25;
-                goMon.MetLocation = 30012; // HOME transfer from GO
-                goMon.Version = GameVersion.GO;
-                goMon.Ball = 4; // Poke Ball
-                goMon.Language = sav.Language;
-                goMon.OriginalTrainerName = sav.OT;
-                goMon.TID16 = sav.TID16;
-                goMon.SID16 = sav.SID16;
-                goMon.OriginalTrainerGender = (byte)sav.Gender;
+                // Rebuild the showdown set text with legal encounter constraints.
+                // Strip any existing Level/Shiny lines and replace with valid ones.
+                var origText = set.Text;
+                var lines = origText.Split('\n')
+                    .Where(l => !l.TrimStart().StartsWith("Level:", StringComparison.OrdinalIgnoreCase)
+                             && !l.TrimStart().StartsWith("Shiny:", StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+                lines.Add($"Level: {legalLevel}");
+                if (legalShiny) lines.Add("Shiny: Yes");
+                var adjusted = new ShowdownSet(string.Join("\n", lines));
+                var adjustedTemplate = AutoLegalityWrapper.GetTemplate(adjusted);
 
-                // Nature
-                var nature = set.Nature != Nature.Random ? set.Nature : Nature.Adamant;
-                goMon.Nature = nature;
-                goMon.StatNature = nature;
-
-                // Ability
-                goMon.AbilityNumber = 1;
-                if (template.Species == 809)
-                    goMon.Ability = (int)Ability.IronFist;
-                else
-                    goMon.Ability = (int)Ability.MagnetPull;
-
-                // Moves - use defaults that are legal for GO-origin transfer
-                if (template.Species == 809)
+                ITrainerInfo swshSav = new SimpleTrainerInfo(GameVersion.SW)
                 {
-                    goMon.Move1 = 742; // Double Iron Bash (signature)
-                    goMon.Move2 = 8;   // Ice Punch (TR)
-                    goMon.Move3 = 276; // Superpower (TR)
-                    goMon.Move4 = 9;   // Thunder Punch (TR)
-                }
-                else
-                {
-                    goMon.Move1 = 84;  // Thunder Shock
-                    goMon.Move2 = 430; // Flash Cannon
-                    goMon.Move3 = 86;  // Thunder Wave
-                    goMon.Move4 = 29;  // Headbutt
-                }
-
-                // IVs - all 31
-                goMon.IV_HP = 31; goMon.IV_ATK = 31; goMon.IV_DEF = 31;
-                goMon.IV_SPA = 31; goMon.IV_SPD = 31; goMon.IV_SPE = 31;
-                if (set.IVs != null && set.IVs.Count() == 6)
-                {
-                    goMon.IV_HP = set.IVs[0]; goMon.IV_ATK = set.IVs[1]; goMon.IV_DEF = set.IVs[2];
-                    goMon.IV_SPE = set.IVs[3]; goMon.IV_SPA = set.IVs[4]; goMon.IV_SPD = set.IVs[5];
-                }
-
-                // EVs
-                if (set.EVs != null && set.EVs.Any(e => e > 0))
-                {
-                    goMon.EV_HP = set.EVs[0]; goMon.EV_ATK = set.EVs[1]; goMon.EV_DEF = set.EVs[2];
-                    goMon.EV_SPE = set.EVs[3]; goMon.EV_SPA = set.EVs[4]; goMon.EV_SPD = set.EVs[5];
-                }
-
-                // Held item
-                if (set.HeldItem > 0) goMon.HeldItem = set.HeldItem;
-
-                // Height/Weight
-                goMon.HeightScalar = 128;
-                goMon.WeightScalar = 128;
-
-                // Date - within GO transfer distribution window
-                goMon.MetDate = new DateOnly(2024, 6, 15);
-
-                // Shiny
-                if (set.Shiny)
-                    goMon.SetIsShiny(true);
-
-                goMon.HealPP();
-                goMon.ClearNickname();
-                goMon.RefreshChecksum();
-
-                pkm = goMon;
-                result = "Regenerated";
-                LogUtil.LogInfo($"[{specName}] Built manually. IsShiny={goMon.IsShiny}, Valid={new LegalityAnalysis(goMon).Valid}", "Helpers");
-            }
-            // Deoxys: Generate as GO-origin for any game. PKHeX 26.3.20 can't match encounters.
-            else if (template.Species == 386 && (typeof(T) == typeof(PK8) || typeof(T) == typeof(PB8) || typeof(T) == typeof(PK9)))
-            {
-                LogUtil.LogInfo($"[Deoxys] Building as GO-origin for {typeof(T).Name}", "Helpers");
-                dynamic goDeoxys = Activator.CreateInstance(typeof(T))!;
-                goDeoxys.Species = (ushort)386;
-                goDeoxys.Form = (byte)template.Form;
-                goDeoxys.Gender = 2;
-                goDeoxys.CurrentLevel = (byte)100;
-                goDeoxys.MetLevel = (byte)15;
-                goDeoxys.MetLocation = (ushort)30012;
-                goDeoxys.Version = GameVersion.GO;
-                goDeoxys.Ball = (byte)4;
-                goDeoxys.Language = (byte)sav.Language;
-                goDeoxys.OriginalTrainerName = "GO";
-                goDeoxys.OriginalTrainerGender = (byte)0;
-                goDeoxys.TID16 = (ushort)12345;
-                goDeoxys.SID16 = (ushort)54321;
-                goDeoxys.HandlingTrainerName = sav.OT;
-                goDeoxys.HandlingTrainerGender = (byte)sav.Gender;
-                goDeoxys.HandlingTrainerLanguage = (byte)sav.Language;
-                goDeoxys.CurrentHandler = (byte)1;
-                goDeoxys.Ability = (int)Ability.Pressure;
-                goDeoxys.AbilityNumber = 1;
-                goDeoxys.IV_HP = 31; goDeoxys.IV_ATK = 31; goDeoxys.IV_DEF = 31;
-                goDeoxys.IV_SPA = 31; goDeoxys.IV_SPD = 31; goDeoxys.IV_SPE = 31;
-                goDeoxys.HeightScalar = (byte)128; goDeoxys.WeightScalar = (byte)128;
-                goDeoxys.MetDate = new DateOnly(2022, 3, 15);
-                var dNature = set.Nature != Nature.Random ? set.Nature : Nature.Timid;
-                goDeoxys.Nature = dNature; goDeoxys.StatNature = dNature;
-                goDeoxys.Move1 = set.Moves?.Length > 0 && set.Moves[0] != 0 ? set.Moves[0] : (ushort)94;
-                goDeoxys.Move2 = set.Moves?.Length > 1 && set.Moves[1] != 0 ? set.Moves[1] : (ushort)63;
-                goDeoxys.Move3 = set.Moves?.Length > 2 && set.Moves[2] != 0 ? set.Moves[2] : (ushort)0;
-                goDeoxys.Move4 = set.Moves?.Length > 3 && set.Moves[3] != 0 ? set.Moves[3] : (ushort)0;
-                if (set.EVs != null && set.EVs.Any(e => e > 0))
-                {
-                    goDeoxys.EV_HP = set.EVs[0]; goDeoxys.EV_ATK = set.EVs[1]; goDeoxys.EV_DEF = set.EVs[2];
-                    goDeoxys.EV_SPE = set.EVs[3]; goDeoxys.EV_SPA = set.EVs[4]; goDeoxys.EV_SPD = set.EVs[5];
-                }
-                if (set.HeldItem > 0) goDeoxys.HeldItem = set.HeldItem;
-                if (set.Shiny) ((PKM)goDeoxys).SetIsShiny(true);
-                ((PKM)goDeoxys).HealPP(); ((PKM)goDeoxys).ClearNickname(); ((PKM)goDeoxys).RefreshChecksum();
-                pkm = (PKM)goDeoxys; result = "Regenerated";
-            }
-            // Celebi in SWSH: Generate as GO-origin (same pattern as Melmetal/Mew).
-            // PKHeX 26.3.20 can't match non-shiny Celebi encounters in PK8 directly.
-            else if (template.Species == 251 && typeof(T) == typeof(PK8))
-            {
-                LogUtil.LogInfo($"[Celebi] Building as GO-origin for PK8", "Helpers");
-                var goCelebi = new PK8
-                {
-                    Species = 251, Form = 0, Gender = 2, CurrentLevel = 100,
-                    MetLevel = 15, MetLocation = 30012, Version = GameVersion.GO, Ball = 4,
-                    Language = sav.Language,
-                    OriginalTrainerName = "GO", OriginalTrainerGender = 0,
-                    TID16 = 12345, SID16 = 54321,
-                    HandlingTrainerName = sav.OT, HandlingTrainerGender = (byte)sav.Gender,
-                    HandlingTrainerLanguage = (byte)sav.Language, CurrentHandler = 1,
-                    Ability = (int)Ability.NaturalCure, AbilityNumber = 1,
-                    IV_HP = 31, IV_ATK = 31, IV_DEF = 31, IV_SPA = 31, IV_SPD = 31, IV_SPE = 31,
-                    HeightScalar = 128, WeightScalar = 128,
-                    MetDate = new DateOnly(2022, 3, 15),
+                    OT = sav.OT, TID16 = sav.TID16, SID16 = sav.SID16, Language = sav.Language,
                 };
-                var cNature = set.Nature != Nature.Random ? set.Nature : Nature.Timid;
-                goCelebi.Nature = cNature; goCelebi.StatNature = cNature;
-                goCelebi.Move1 = set.Moves?.Length > 0 && set.Moves[0] != 0 ? set.Moves[0] : (ushort)94;  // Psychic
-                goCelebi.Move2 = set.Moves?.Length > 1 && set.Moves[1] != 0 ? set.Moves[1] : (ushort)202; // Giga Drain
-                goCelebi.Move3 = set.Moves?.Length > 2 && set.Moves[2] != 0 ? set.Moves[2] : (ushort)105; // Recover
-                goCelebi.Move4 = set.Moves?.Length > 3 && set.Moves[3] != 0 ? set.Moves[3] : (ushort)0;
-                if (set.EVs != null && set.EVs.Any(e => e > 0))
+                var swshPkm = swshSav.GetLegal(adjustedTemplate, out var swshResult);
+                if (swshPkm != null && swshPkm.Species == template.Species)
                 {
-                    goCelebi.EV_HP = set.EVs[0]; goCelebi.EV_ATK = set.EVs[1]; goCelebi.EV_DEF = set.EVs[2];
-                    goCelebi.EV_SPE = set.EVs[3]; goCelebi.EV_SPA = set.EVs[4]; goCelebi.EV_SPD = set.EVs[5];
-                }
-                if (set.HeldItem > 0) goCelebi.HeldItem = set.HeldItem;
-                if (set.Shiny) goCelebi.SetIsShiny(true);
-                goCelebi.HealPP(); goCelebi.ClearNickname(); goCelebi.RefreshChecksum();
-                pkm = goCelebi; result = "Regenerated";
-            }
-            // Jirachi in SWSH: Same GO-origin pattern.
-            else if (template.Species == 385 && typeof(T) == typeof(PK8))
-            {
-                LogUtil.LogInfo($"[Jirachi] Building as GO-origin for PK8", "Helpers");
-                var goJirachi = new PK8
-                {
-                    Species = 385, Form = 0, Gender = 2, CurrentLevel = 100,
-                    MetLevel = 15, MetLocation = 30012, Version = GameVersion.GO, Ball = 4,
-                    Language = sav.Language,
-                    OriginalTrainerName = "GO", OriginalTrainerGender = 0,
-                    TID16 = 12345, SID16 = 54321,
-                    HandlingTrainerName = sav.OT, HandlingTrainerGender = (byte)sav.Gender,
-                    HandlingTrainerLanguage = (byte)sav.Language, CurrentHandler = 1,
-                    Ability = (int)Ability.SereneGrace, AbilityNumber = 1,
-                    IV_HP = 31, IV_ATK = 31, IV_DEF = 31, IV_SPA = 31, IV_SPD = 31, IV_SPE = 31,
-                    HeightScalar = 128, WeightScalar = 128,
-                    MetDate = new DateOnly(2022, 3, 15),
-                };
-                var jNature = set.Nature != Nature.Random ? set.Nature : Nature.Timid;
-                goJirachi.Nature = jNature; goJirachi.StatNature = jNature;
-                goJirachi.Move1 = set.Moves?.Length > 0 && set.Moves[0] != 0 ? set.Moves[0] : (ushort)248; // Meteor Mash
-                goJirachi.Move2 = set.Moves?.Length > 1 && set.Moves[1] != 0 ? set.Moves[1] : (ushort)94;  // Psychic
-                goJirachi.Move3 = set.Moves?.Length > 2 && set.Moves[2] != 0 ? set.Moves[2] : (ushort)0;
-                goJirachi.Move4 = set.Moves?.Length > 3 && set.Moves[3] != 0 ? set.Moves[3] : (ushort)0;
-                if (set.EVs != null && set.EVs.Any(e => e > 0))
-                {
-                    goJirachi.EV_HP = set.EVs[0]; goJirachi.EV_ATK = set.EVs[1]; goJirachi.EV_DEF = set.EVs[2];
-                    goJirachi.EV_SPE = set.EVs[3]; goJirachi.EV_SPA = set.EVs[4]; goJirachi.EV_SPD = set.EVs[5];
-                }
-                if (set.HeldItem > 0) goJirachi.HeldItem = set.HeldItem;
-                if (set.Shiny) goJirachi.SetIsShiny(true);
-                goJirachi.HealPP(); goJirachi.ClearNickname(); goJirachi.RefreshChecksum();
-                pkm = goJirachi; result = "Regenerated";
-            }
-            // Mew in SWSH: Shiny-locked from all in-game encounters. PKHeX's standard
-            // encounter API cannot generate a legal shiny Mew in PK8 (GO encounter data
-            // not exposed through GenerateEncounters). Build manually as GO-origin.
-            else if (template.Species == 151 && typeof(T) == typeof(PK8) && set.Shiny)
-            {
-                LogUtil.LogInfo($"[Mew] Building manually as GO-origin (shiny-locked otherwise)", "Helpers");
-                var goMew = new PK8
-                {
-                    Species = 151, Form = 0, Gender = 2, CurrentLevel = 100,
-                    MetLevel = 15, MetLocation = 30012, Version = GameVersion.GO, Ball = 4,
-                    Language = sav.Language,
-                    OriginalTrainerName = "GO", OriginalTrainerGender = 0,
-                    TID16 = 12345, SID16 = 54321,
-                    HandlingTrainerName = sav.OT, HandlingTrainerGender = (byte)sav.Gender,
-                    HandlingTrainerLanguage = (byte)sav.Language, CurrentHandler = 1,
-                    Ability = (int)Ability.Synchronize, AbilityNumber = 1,
-                    IV_HP = 31, IV_ATK = 31, IV_DEF = 31, IV_SPA = 31, IV_SPD = 31, IV_SPE = 31,
-                    HeightScalar = 128, WeightScalar = 128,
-                    MetDate = new DateOnly(2022, 3, 15),
-                };
-                var mewNature = set.Nature != Nature.Random ? set.Nature : Nature.Timid;
-                goMew.Nature = mewNature; goMew.StatNature = mewNature;
-                goMew.Move1 = set.Moves?.Length > 0 && set.Moves[0] != 0 ? set.Moves[0] : (ushort)94;
-                goMew.Move2 = set.Moves?.Length > 1 && set.Moves[1] != 0 ? set.Moves[1] : (ushort)1;
-                goMew.Move3 = set.Moves?.Length > 2 && set.Moves[2] != 0 ? set.Moves[2] : (ushort)0;
-                goMew.Move4 = set.Moves?.Length > 3 && set.Moves[3] != 0 ? set.Moves[3] : (ushort)0;
-                if (set.EVs != null && set.EVs.Any(e => e > 0))
-                {
-                    goMew.EV_HP = set.EVs[0]; goMew.EV_ATK = set.EVs[1]; goMew.EV_DEF = set.EVs[2];
-                    goMew.EV_SPE = set.EVs[3]; goMew.EV_SPA = set.EVs[4]; goMew.EV_SPD = set.EVs[5];
-                }
-                if (set.HeldItem > 0) goMew.HeldItem = set.HeldItem;
-                goMew.SetIsShiny(true);
-                goMew.HealPP(); goMew.ClearNickname(); goMew.RefreshChecksum();
-                pkm = goMew; result = "Regenerated";
-            }
-            // Jirachi in SWSH: Shiny-locked. Same pattern as Mew — manual GO-origin build.
-            else if (template.Species == 385 && typeof(T) == typeof(PK8) && set.Shiny)
-            {
-                LogUtil.LogInfo($"[Jirachi] Building manually as GO-origin", "Helpers");
-                var goJirachi = new PK8
-                {
-                    Species = 385, Form = 0, Gender = 2, CurrentLevel = 100,
-                    MetLevel = 5, MetLocation = 30012, Version = GameVersion.GO, Ball = 4,
-                    Language = sav.Language,
-                    OriginalTrainerName = "GO", OriginalTrainerGender = 0,
-                    TID16 = 12345, SID16 = 54321,
-                    HandlingTrainerName = sav.OT, HandlingTrainerGender = (byte)sav.Gender,
-                    HandlingTrainerLanguage = (byte)sav.Language, CurrentHandler = 1,
-                    Ability = (int)Ability.SereneGrace, AbilityNumber = 1,
-                    IV_HP = 31, IV_ATK = 31, IV_DEF = 31, IV_SPA = 31, IV_SPD = 31, IV_SPE = 31,
-                    HeightScalar = 128, WeightScalar = 128,
-                    MetDate = new DateOnly(2022, 3, 15),
-                };
-                var jNature = set.Nature != Nature.Random ? set.Nature : Nature.Timid;
-                goJirachi.Nature = jNature; goJirachi.StatNature = jNature;
-                goJirachi.Move1 = set.Moves?.Length > 0 && set.Moves[0] != 0 ? set.Moves[0] : (ushort)248;
-                goJirachi.Move2 = set.Moves?.Length > 1 && set.Moves[1] != 0 ? set.Moves[1] : (ushort)94;
-                goJirachi.Move3 = set.Moves?.Length > 2 && set.Moves[2] != 0 ? set.Moves[2] : (ushort)0;
-                goJirachi.Move4 = set.Moves?.Length > 3 && set.Moves[3] != 0 ? set.Moves[3] : (ushort)0;
-                if (set.EVs != null && set.EVs.Any(e => e > 0))
-                {
-                    goJirachi.EV_HP = set.EVs[0]; goJirachi.EV_ATK = set.EVs[1]; goJirachi.EV_DEF = set.EVs[2];
-                    goJirachi.EV_SPE = set.EVs[3]; goJirachi.EV_SPA = set.EVs[4]; goJirachi.EV_SPD = set.EVs[5];
-                }
-                if (set.HeldItem > 0) goJirachi.HeldItem = set.HeldItem;
-                goJirachi.SetIsShiny(true);
-                goJirachi.HealPP(); goJirachi.ClearNickname(); goJirachi.RefreshChecksum();
-                pkm = goJirachi; result = "Regenerated";
-            }
-            // Giratina (Altered or Origin): Origin form requires Griseous Orb (PK8/PB8/PA8) or
-            // Griseous Core (PK9). In SV/PK9, Giratina has no native shiny encounter — we must
-            // generate in BDSP (PB8 native shiny) and convert up via HOME transfer chain.
-            else if (template.Species == 487)
-            {
-                LogUtil.LogInfo($"[Giratina] Generating form={template.Form} shiny={set.Shiny} for {typeof(T).Name}", "Helpers");
-                pkm = sav.GetLegal(template, out result);
-                var giraValid = pkm != null && new LegalityAnalysis(pkm).Valid;
-                if (!giraValid)
-                {
-                    LogUtil.LogInfo($"[Giratina] Direct generation failed, trying PB8 (BDSP) fallback", "Helpers");
-                    try
+                    var swshLa = new LegalityAnalysis(swshPkm);
+                    if (swshLa.Valid)
                     {
-                        ITrainerInfo bdspSav = new SimpleTrainerInfo(GameVersion.BD)
+                        swshPkm.RefreshChecksum();
+                        var converted = EntityConverter.ConvertToType(swshPkm, typeof(T), out var _);
+                        if (converted is PKM convTarget && convTarget.Species == template.Species)
                         {
-                            OT = sav.OT, TID16 = sav.TID16, SID16 = sav.SID16, Language = sav.Language,
-                        };
-                        var pb8 = bdspSav.GetLegal(template, out var pb8Result);
-                        if (pb8 != null && pb8.Species == 487)
-                        {
-                            // PB8 Giratina Origin needs Griseous Orb to hold form
-                            pb8.Form = (byte)template.Form;
-                            if (template.Form == 1 && pb8.HeldItem == 0) pb8.HeldItem = 112;
-                            pb8.ClearNickname();
-                            pb8.RefreshChecksum();
-                            var converted = EntityConverter.ConvertToType(pb8, typeof(T), out var convRes);
-                            if (converted is T convTarget && convTarget.Species == 487)
+                            // Add a HOME tracker — required for Z-A/SV to recognize the
+                            // file as a legitimate HOME transfer (rather than "Non-Native,
+                            // cannot enter HOME"). EntityConverter.ConvertToType handles
+                            // the format change but doesn't always set the tracker, so do
+                            // it explicitly here when the target supports it and the
+                            // tracker is empty.
+                            if (convTarget is IHomeTrack hometrk && hometrk.Tracker == 0)
                             {
-                                // Restore form + correct item for target format after conversion
-                                convTarget.Form = (byte)template.Form;
-                                if (template.Form == 1)
-                                {
-                                    // PK9 uses Griseous Core (2413), all earlier gens use Griseous Orb (112)
-                                    convTarget.HeldItem = typeof(T) == typeof(PK9) ? 2413 : 112;
-                                }
-                                convTarget.Gender = 2; // genderless
-                                convTarget.ClearNickname();
+                                var trkBytes = new byte[8];
+                                Random.Shared.NextBytes(trkBytes);
+                                hometrk.Tracker = BitConverter.ToUInt64(trkBytes, 0);
                                 convTarget.RefreshChecksum();
+                                LogUtil.LogInfo($"[TradeModule] Added HOME tracker to converted {convTarget.GetType().Name} for species {convTarget.Species}", "Helpers");
+                            }
+
+                            // For PK9, try every Tera Type until one passes legality.
+                            // PKHeX expects specific values that vary by encounter — for HOME-transferred
+                            // Pokemon, valid Tera Types are typically the Pokemon's primary or secondary type.
+                            convTarget.RefreshChecksum();
+                            var convLa = new LegalityAnalysis(convTarget);
+
+                            if (!convLa.Valid && convTarget is PK9 pk9 && convLa.Report().Contains("Tera Type"))
+                            {
+                                var pi = PersonalTable.SV.GetFormEntry(pk9.Species, pk9.Form);
+                                var teraOptions = new List<byte> { pi.Type1, pi.Type2 };
+                                // Add all 18 types as fallback candidates
+                                for (byte t = 0; t < 18; t++) if (!teraOptions.Contains(t)) teraOptions.Add(t);
+
+                                LegalityAnalysis? bestLa = null;
+                                foreach (var teraType in teraOptions)
+                                {
+                                    pk9.TeraTypeOriginal = (MoveType)teraType;
+                                    pk9.TeraTypeOverride = (MoveType)19;
+                                    pk9.RefreshChecksum();
+                                    var testLa = new LegalityAnalysis(pk9);
+                                    if (testLa.Valid)
+                                    {
+                                        bestLa = testLa;
+                                        LogUtil.LogInfo($"[TradeModule] Tera Type {teraType} valid for species {template.Species}", "Helpers");
+                                        break;
+                                    }
+                                }
+                                convLa = bestLa ?? convLa;
+                            }
+
+                            if (convLa.Valid)
+                            {
                                 pkm = convTarget;
-                                result = "Regenerated";
-                                LogUtil.LogInfo($"[Giratina] PB8→{typeof(T).Name} conversion: {convRes}, form={convTarget.Form}, item={convTarget.HeldItem}, shiny={convTarget.IsShiny}", "Helpers");
+                                result = "SwSh→HOME→PK9";
+                                LogUtil.LogInfo($"[TradeModule] PK8→PK9 via HOME succeeded for {template.Species}", "Helpers");
+                            }
+                            else
+                            {
+                                LogUtil.LogInfo($"[TradeModule] All Tera Types failed: {convLa.Report().Split('\n')[0]}", "Helpers");
+                                try
+                                {
+                                    var legalized = convTarget.LegalizePokemon();
+                                    if (legalized is PKM lp && lp.Species == template.Species)
+                                    {
+                                        var lpLa = new LegalityAnalysis(lp);
+                                        LogUtil.LogInfo($"[TradeModule] ALM legalize result: Valid={lpLa.Valid}, {lpLa.Report().Split('\n')[0]}", "Helpers");
+                                        if (lpLa.Valid)
+                                        {
+                                            pkm = lp;
+                                            result = "SwSh→HOME→PK9 (legalized)";
+                                        }
+                                    }
+                                    else
+                                    {
+                                        LogUtil.LogInfo($"[TradeModule] Legalize returned null or wrong species", "Helpers");
+                                    }
+                                }
+                                catch (Exception ex) { LogUtil.LogError($"[TradeModule] Legalize exception: {ex.Message}", "Helpers"); }
                             }
                         }
                     }
-                    catch (Exception ex)
+                    else
                     {
-                        LogUtil.LogError($"[Giratina] Fallback exception: {ex.Message}", "Helpers");
-                    }
-                }
-                if (pkm != null)
-                {
-                    var giraLa = new LegalityAnalysis(pkm);
-                    LogUtil.LogInfo($"[Giratina] Final: Form={pkm.Form}, HeldItem={pkm.HeldItem}, Shiny={pkm.IsShiny}, Valid={giraLa.Valid}", "Helpers");
-                }
-            }
-            // Shaymin-Sky: Only legal with Gracidea held in some games.
-            // In BDSP (PB8), Gracidea is unreleased - fall back to Shaymin-Land.
-            else if (template.Species == 492 && template.Form == 1)
-            {
-                if (typeof(T) == typeof(PB8))
-                {
-                    LogUtil.LogInfo($"[Shaymin-Sky] Not legal in BDSP (Gracidea unreleased), generating Shaymin-Land instead", "Helpers");
-                    var landText = "Shaymin\nLevel: 100" + (set.Shiny ? "\nShiny: Yes" : "");
-                    var landSet = new ShowdownSet(landText);
-                    var landTemplate = AutoLegalityWrapper.GetTemplate(landSet);
-                    pkm = sav.GetLegal(landTemplate, out result);
-                }
-                else
-                {
-                    LogUtil.LogInfo($"[Shaymin-Sky] Auto-attaching Gracidea (item 466)", "Helpers");
-                    pkm = sav.GetLegal(template, out result);
-                    if (pkm != null && pkm.HeldItem != 466)
-                    {
-                        pkm.HeldItem = 466;
-                        pkm.RefreshChecksum();
-                    }
-                }
-            }
-            // Genesect: Requires a Drive matching its form (Burn=116, Chill=117, Douse=118, Shock=119)
-            else if (template.Species == 649 && template.Form > 0)
-            {
-                int driveItem = template.Form switch
-                {
-                    1 => 117, // Douse Drive (Water)
-                    2 => 118, // Shock Drive (Electric)
-                    3 => 116, // Burn Drive (Fire)
-                    4 => 119, // Chill Drive (Ice)
-                    _ => 0
-                };
-                LogUtil.LogInfo($"[Genesect] Auto-attaching Drive item {driveItem} for form {template.Form}", "Helpers");
-                pkm = sav.GetLegal(template, out result);
-                if (pkm != null && driveItem > 0 && pkm.HeldItem != driveItem)
-                {
-                    pkm.HeldItem = driveItem;
-                    pkm.RefreshChecksum();
-                }
-            }
-            // Arceus: Requires the Plate matching its type (forms 1-17)
-            else if (template.Species == 493 && template.Form > 0 && template.Form <= 17)
-            {
-                // Plate item IDs: Flame Plate=298, Splash Plate=299, ..., Pixie Plate=644
-                int[] plateItems = { 0, 298, 299, 300, 301, 302, 303, 304, 305, 306, 307, 308, 309, 310, 311, 312, 313, 644 };
-                int plateItem = template.Form < plateItems.Length ? plateItems[template.Form] : 0;
-                LogUtil.LogInfo($"[Arceus] Auto-attaching Plate item {plateItem} for form {template.Form}", "Helpers");
-                pkm = sav.GetLegal(template, out result);
-                if (pkm != null && plateItem > 0 && pkm.HeldItem != plateItem)
-                {
-                    pkm.HeldItem = (ushort)plateItem;
-                    pkm.RefreshChecksum();
-                }
-            }
-            // Silvally: Requires Memory matching its form (forms 1-17)
-            else if (template.Species == 773 && template.Form > 0 && template.Form <= 17)
-            {
-                // Memory item IDs: Fighting Memory=904, Flying Memory=905, ..., Fairy Memory=920
-                int memoryItem = 903 + template.Form;
-                LogUtil.LogInfo($"[Silvally] Auto-attaching Memory item {memoryItem} for form {template.Form}", "Helpers");
-                pkm = sav.GetLegal(template, out result);
-                if (pkm != null && pkm.HeldItem != memoryItem)
-                {
-                    pkm.HeldItem = (ushort)memoryItem;
-                    pkm.RefreshChecksum();
-                }
-            }
-            // Zacian: Crowned is a battle-only form. Store as Hero (form 0) with Rusted Sword held.
-            // The game auto-transforms to Crowned when entering battle.
-            else if (template.Species == 888)
-            {
-                bool wantsCrowned = set.FormName != null && set.FormName.Contains("Crowned", StringComparison.OrdinalIgnoreCase);
-                LogUtil.LogInfo($"[Zacian] FormName='{set.FormName}', wantsCrowned={wantsCrowned}", "Helpers");
-                // Force template to Hero form (0) - Crowned form fails legality outside battle
-                if (wantsCrowned)
-                {
-                    var heroText = "Zacian\nLevel: 100";
-                    if (set.Shiny) heroText += "\nShiny: Yes";
-                    var heroSet = new ShowdownSet(heroText);
-                    var heroTemplate = AutoLegalityWrapper.GetTemplate(heroSet);
-                    pkm = sav.GetLegal(heroTemplate, out result);
-                    if (pkm != null)
-                    {
-                        pkm.HeldItem = 1103; // Rusted Sword - auto-transforms to Crowned in battle
-                        pkm.RefreshChecksum();
+                        LogUtil.LogInfo($"[TradeModule] PK8 invalid: {swshLa.Report().Split('\n')[0]}", "Helpers");
                     }
                 }
                 else
                 {
-                    pkm = sav.GetLegal(template, out result);
+                    LogUtil.LogInfo($"[TradeModule] SwSh gen returned null/wrong species (result={swshResult})", "Helpers");
                 }
-            }
-            // Zamazenta: Same - store as Hero with Rusted Shield
-            else if (template.Species == 889)
-            {
-                bool wantsCrowned = set.FormName != null && set.FormName.Contains("Crowned", StringComparison.OrdinalIgnoreCase);
-                LogUtil.LogInfo($"[Zamazenta] FormName='{set.FormName}', wantsCrowned={wantsCrowned}", "Helpers");
-                if (wantsCrowned)
+
+                // If ALM/conversion routing failed, fall back to a pre-made PK9 file from
+                // the HOME-Ready-Files library. These are known-legal files for SwSh-only
+                // species that PKHeX/ALM can't reliably regenerate.
+                if (pkm == null)
                 {
-                    var heroText = "Zamazenta\nLevel: 100";
-                    if (set.Shiny) heroText += "\nShiny: Yes";
-                    var heroSet = new ShowdownSet(heroText);
-                    var heroTemplate = AutoLegalityWrapper.GetTemplate(heroSet);
-                    pkm = sav.GetLegal(heroTemplate, out result);
-                    if (pkm != null)
+                    try
                     {
-                        pkm.HeldItem = 1104; // Rusted Shield - auto-transforms to Crowned in battle
-                        pkm.RefreshChecksum();
+                        var preMadeFolder = @"C:\Users\ericr\OneDrive\Desktop\HOME-Ready-Files";
+                        if (Directory.Exists(preMadeFolder))
+                        {
+                            var prefix = template.Species.ToString("D4");
+                            // Match e.g. "0890 ★ - Eternatus - HEX.pk9" (shiny) or "0891 - Kubfu - HEX.pk9" (non-shiny).
+                            // Try both shiny and non-shiny patterns since the user's preference may not
+                            // have a matching legal file (e.g. shiny-only Eternatus).
+                            var patterns = new[] { $"{prefix} ★ -*.pk9", $"{prefix} -*.pk9", $"{prefix}-*.pk9" };
+                            foreach (var pat in patterns)
+                            {
+                                var files = Directory.GetFiles(preMadeFolder, pat);
+                                if (files.Length > 0)
+                                {
+                                    var bytes = File.ReadAllBytes(files[0]);
+                                    var loaded = EntityFormat.GetFromBytes(bytes, EntityContext.Gen9);
+                                    if (loaded is T preMade && preMade.Species == template.Species)
+                                    {
+                                        var preMadeLa = new LegalityAnalysis(preMade);
+                                        if (preMadeLa.Valid)
+                                        {
+                                            pkm = preMade;
+                                            result = "PreMadeFile";
+                                            LogUtil.LogInfo($"[TradeModule] Loaded pre-made file {Path.GetFileName(files[0])} for species {template.Species}", "Helpers");
+                                            break;
+                                        }
+                                        else
+                                        {
+                                            LogUtil.LogInfo($"[TradeModule] Pre-made file {Path.GetFileName(files[0])} failed legality: {preMadeLa.Report().Split('\n')[0]}", "Helpers");
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
+                    catch (Exception ex) { LogUtil.LogError($"[TradeModule] Pre-made file load exception: {ex.Message}", "Helpers"); }
                 }
-                else
-                {
-                    pkm = sav.GetLegal(template, out result);
-                }
-            }
-            // Dialga-Origin: Requires Adamant Crystal (item 1777)
-            else if (template.Species == 483 && template.Form == 1)
-            {
-                LogUtil.LogInfo($"[Dialga-Origin] Auto-attaching Adamant Crystal (1777)", "Helpers");
-                pkm = sav.GetLegal(template, out result);
-                if (pkm != null && pkm.HeldItem != 1777)
-                {
-                    pkm.HeldItem = 1777;
-                    pkm.RefreshChecksum();
-                }
-            }
-            // Palkia-Origin: Requires Lustrous Globe (item 1778)
-            else if (template.Species == 484 && template.Form == 1)
-            {
-                LogUtil.LogInfo($"[Palkia-Origin] Auto-attaching Lustrous Globe (1778)", "Helpers");
-                pkm = sav.GetLegal(template, out result);
-                if (pkm != null && pkm.HeldItem != 1778)
-                {
-                    pkm.HeldItem = 1778;
-                    pkm.RefreshChecksum();
-                }
-            }
-            // Keldeo-Resolute: Requires Secret Sword move to maintain form
-            else if (template.Species == 647 && template.Form == 1)
-            {
-                LogUtil.LogInfo($"[Keldeo-Resolute] Ensuring Secret Sword (move 548) is present", "Helpers");
-                pkm = sav.GetLegal(template, out result);
-                if (pkm != null)
-                {
-                    bool hasSecretSword = pkm.Move1 == 548 || pkm.Move2 == 548 || pkm.Move3 == 548 || pkm.Move4 == 548;
-                    if (!hasSecretSword)
-                    {
-                        pkm.Move4 = 548;
-                        pkm.RefreshChecksum();
-                    }
-                }
-            }
-            // Kyurem-Black/White: Fused forms require proper encounter handling
-            // ALM handles these, but form 1 = White (with Reshiram), form 2 = Black (with Zekrom)
-            else if (template.Species == 646 && template.Form > 0)
-            {
-                LogUtil.LogInfo($"[Kyurem] Fused form {template.Form} - letting ALM handle encounter", "Helpers");
-                pkm = sav.GetLegal(template, out result);
-            }
-            // Hoopa-Unbound: Form 1 requires Hoopa to have used Hoopa's Ring
-            // In game, requires Prison Bottle key item but not a held item
-            else if (template.Species == 720 && template.Form == 1)
-            {
-                LogUtil.LogInfo($"[Hoopa-Unbound] Letting ALM generate unbound form", "Helpers");
-                pkm = sav.GetLegal(template, out result);
-            }
-            // Urshifu Single Strike (form 0) / Rapid Strike (form 1) - different evolutions
-            // ALM handles both forms natively, just let it through
-            else if (template.Species == 892)
-            {
-                LogUtil.LogInfo($"[Urshifu] Form {template.Form} - letting ALM handle", "Helpers");
-                pkm = sav.GetLegal(template, out result);
-            }
-            // Alcremie form workaround: ALM may fail to generate non-default Alcremie forms.
-            // Generate as default (form 0), then fix the form afterwards.
-            else if (template.Species == 869 && template.Form != 0)
-            {
-                LogUtil.LogInfo($"[Alcremie] Overriding template form {template.Form} to default (0) for generation, FormName='{set.FormName}'", "Alcremie");
-                // Build a clean Alcremie set with default form, preserving shiny/level
-                var alcremieText = "Alcremie";
-                if (set.Shiny) alcremieText += "\nShiny: Yes";
-                alcremieText += "\nLevel: 100";
-                LogUtil.LogInfo($"[Alcremie] Using showdown text: {alcremieText.Replace("\n", " | ")}", "Alcremie");
-                var defaultSet = new ShowdownSet(alcremieText);
-                var defaultTemplate = AutoLegalityWrapper.GetTemplate(defaultSet);
-                pkm = sav.GetLegal(defaultTemplate, out result);
+
+                // Last resort: original ALM call (will produce broken pkm and error handling kicks in)
+                if (pkm == null)
+                    pkm = sav.GetLegalForTrade(template, out result);
             }
             else
             {
                 // Use normal template for regular Pokémon
-                pkm = sav.GetLegal(template, out result);
+                pkm = sav.GetLegalForTrade(template, out result);
 
-                // If ALM failed, try cross-game fallback (BDSP → target format)
-                // Handles species like Celebi/Jirachi that may fail in certain games
-                if ((pkm == null || result == "Failed" || !new LegalityAnalysis(pkm).Valid) && typeof(T) != typeof(PB8))
+                // BDSP legendary met location override: ALM tends to pick roaming/event
+                // encounter slots that produce the wrong met location (e.g. Valley Windworks
+                // for Cresselia, Newmoon Island-2 for Darkrai). Force canonical locations —
+                // but ONLY when ALM's output is invalid. PKHeX has duplicate location IDs
+                // for the same place (e.g. Newmoon Island at id 332 AND 333) and ALM picks
+                // the encounter-matching variant; the resolver here picks the first one,
+                // which may not match the encounter ALM used. If the current file is
+                // already valid, leave it alone — the override would break it.
+                if (pkm is PB8 pb8 && pkm.Species is 480 or 481 or 482 or 485 or 487 or 488 or 491 or 492)
                 {
-                    LogUtil.LogInfo($"[CrossGame Fallback] Direct gen failed for {template.Species}, trying PB8 (BDSP)", "Helpers");
-                    try
+                    var preOverrideLa = new LegalityAnalysis(pb8);
+                    if (preOverrideLa.Valid)
                     {
-                        ITrainerInfo bdspSav = new SimpleTrainerInfo(GameVersion.BD)
-                        { OT = sav.OT, TID16 = sav.TID16, SID16 = sav.SID16, Language = sav.Language };
-                        var pb8 = bdspSav.GetLegal(template, out var pb8Result);
-                        if (pb8 != null && pb8.Species == template.Species && new LegalityAnalysis(pb8).Valid)
+                        LogUtil.LogInfo($"[BDSP-LOC] species={pkm.Species} preLoc={pb8.MetLocation} — already valid, skipping override", "Helpers");
+                    }
+                    else
+                    {
+                        ResolveBDSPLocationIds();
+                        ushort canonicalLoc = pkm.Species switch
                         {
-                            var converted = EntityConverter.ConvertToType(pb8, typeof(T), out var convRes);
-                            if (converted is T convTarget && convTarget.Species == template.Species)
-                            {
-                                convTarget.ClearNickname();
-                                convTarget.RefreshChecksum();
-                                pkm = convTarget;
-                                result = "Regenerated";
-                                LogUtil.LogInfo($"[CrossGame Fallback] PB8→{typeof(T).Name} succeeded for {template.Species}", "Helpers");
-                            }
+                            480 => _lakeAcuityId,        // Uxie
+                            481 => _lakeVerityId,        // Mesprit
+                            482 => _lakeValorId,         // Azelf
+                            485 => _starkMountainId,     // Heatran
+                            487 => _turnbackCaveId,      // Giratina
+                            488 => _fullmoonIslandId,    // Cresselia
+                            491 => _newmoonIslandId,     // Darkrai
+                            492 => _flowerParadiseId,    // Shaymin
+                            _ => pkm.MetLocation,
+                        };
+                        LogUtil.LogInfo($"[BDSP-LOC] species={pkm.Species} preLoc={pb8.MetLocation} target={canonicalLoc} (file invalid, attempting override)", "Helpers");
+                        if (canonicalLoc != 0 && pb8.MetLocation != canonicalLoc)
+                        {
+                            pb8.MetLocation = canonicalLoc;
+                            pb8.RefreshChecksum();
+                            LogUtil.LogInfo($"[BDSP-LOC] postLoc={pb8.MetLocation}", "Helpers");
                         }
                     }
-                    catch (Exception ex) { LogUtil.LogError($"[CrossGame Fallback] Exception: {ex.Message}", "Helpers"); }
+                }
+
+                // Mythical species (Celebi, Jirachi, etc.) often fail ALM generation in SwSh
+                // because of shiny-lock or encounter restrictions. Fall back to pre-made files
+                // from HOME-Ready-Files when ALM produces an invalid result.
+                // Also covers Z-A legendaries whose Power Construct / Hyperspace encounter
+                // signatures ALM can't reproduce (Zygarde and friends) — for PA9 only.
+                bool isGoMyth = IsGoShinyMythical(template.Species);
+                // Z-A pre-made files cover NON-SHINY native catches (Wild Zone / Hyperspace
+                // encounters are shiny-locked) AND specific species with legitimate shiny
+                // pre-made files in HOME-Ready-Files (Zygarde from 2018 Legends event,
+                // etc.). For shiny requests on species WITHOUT a dedicated shiny pre-made,
+                // fall through to ALM so it routes through SwSh→HOME→PA9 (Max Lair shiny
+                // is encounter-eligible) instead of force-flipping a non-shiny file's PID.
+                bool hasShinyPreMade = template.Species == 718; // Zygarde — 2018 Legends event
+                bool isZALegPre = typeof(T) == typeof(PA9)
+                    && IsZALegendaryWithPreMade(template.Species)
+                    && (!template.Shiny || hasShinyPreMade);
+                bool isMythical = isGoMyth || isZALegPre;
+                LogUtil.LogInfo($"[TradeModule] DIAG mythical-gate: species={template.Species} typeof(T)={typeof(T).Name} shiny={template.Shiny} isGoMyth={isGoMyth} isZALegPre={isZALegPre} isMythical={isMythical}", "Helpers");
+                if (isMythical)
+                {
+                    var fallbackCheck = pkm == null || pkm.Species != template.Species
+                        || !new LegalityAnalysis(pkm).Valid;
+                    // For Z-A legendaries with a real source file in HOME-Ready-Files,
+                    // ALWAYS use the pre-made — ALM may produce a "valid-looking" PA9
+                    // here, but downstream OT/language enforcement mutates it into an
+                    // invalid encounter that the receiving Z-A game refuses. Only when
+                    // isZALegPre is true (already gated on !shiny above), so this won't
+                    // hijack shiny requests that should route through SwSh.
+                    if (isZALegPre)
+                        fallbackCheck = true;
+                    // Same trap applies to GO-Mythicals on PK8/PK9/PB8: ALM picks an
+                    // event Mystery-Gift encounter with a fixed OT, then AutoOT swaps the
+                    // OT to the trade partner's and the file fails the Misc legality
+                    // check in-game ("Trainer/Misc mismatch for encounter"). Force the
+                    // pre-made route — HOME-Ready-Files carries event-OT-compatible files
+                    // for these species and the bot's trade-time ApplyAutoOT will swap OT
+                    // cleanly because the pre-made's encounter is non-fixed-OT.
+                    if (isGoMyth)
+                        fallbackCheck = true;
+                    LogUtil.LogInfo($"[TradeModule] DIAG fallback-gate: pkm-null={pkm == null} speciesMatch={(pkm != null && pkm.Species == template.Species)} fallbackCheck={fallbackCheck}", "Helpers");
+
+                    // Z-A native check: if ALM produced a PA9 with a Z-A met location for a
+                    // Z-A native species, KEEP it — don't fall back to pre-made event files
+                    // (which would have "a lovely place" met location instead of Hyperspace
+                    // Lumiose / Wild Zone). Bypass legality flags too — the encounter is real.
+                    // Per Serebii's Z-A legendary locations: Mewtwo (Lysandre Labs), Latias/Latios
+                    // (Hyperspace Lumiose), Kyogre (Hyperspace Primordial Sea), Groudon (Hyperspace
+                    // Desolate Land), Rayquaza (Hyperspace Sky Pillar), Heatran (Hyperspace Infernal
+                    // Arena), Darkrai (Hyperspace Newmoon Nightmare), Swords of Justice (Hyperspace
+                    // Lumiose), Keldeo/Meloetta/Genesect (Hyperspace Lumiose), Floette-Eternal,
+                    // Xerneas (Wild Zone 11), Yveltal (Rouge Sector 2), Zygarde (Wild Zone 20),
+                    // Diancie (Magenta Sector 8), Hoopa/Volcanion/Magearna/Melmetal (Hyperspace
+                    // Lumiose), Marshadow/Meltan (Rouge Sector 1), Zeraora (Hyperspace Lumiose).
+                    // Z-A bypass: native catch (loc 100-350) OR HOME-transferred (loc 30000+).
+                    // Either way, keep ALM's PA9 instead of falling back to pre-made files.
+                    bool isInZANativeList = template.Species is 150 or 151 or 251 or 380 or 381 or 382 or 383 or 384 or 385 or 386
+                            or 485 or 489 or 490 or 491 or 492 or 493 or 494
+                            or 638 or 639 or 640 or 647 or 648 or 649
+                            or 670 or 716 or 717 or 718 or 719 or 720 or 721
+                            or 801 or 802 or 807 or 808 or 809;
+                    bool isZANativeFromALM = pkm is PA9 &&
+                        (pkm.MetLocation is > 0 and <= 350 || pkm.MetLocation >= 30000) &&
+                        isInZANativeList &&
+                        !IsZALegendaryWithPreMade(template.Species); // species with real .pa9 source files override ALM
+                    if (isZANativeFromALM) fallbackCheck = false;
+
+                    // Z-A native fresh catches (loc 100-350) shouldn't have a tracker —
+                    // they're wild caught. HOME-transferred (30000+) keep their tracker
+                    // since they actually went through HOME.
+                    bool isZAFreshWild = pkm is PA9 && pkm.MetLocation is > 0 and <= 350;
+                    if (isZAFreshWild && pkm is IHomeTrack zaHomeTrack && zaHomeTrack.HasTracker)
+                    {
+                        zaHomeTrack.Tracker = 0;
+                        pkm.RefreshChecksum();
+                    }
+
+                    // ZA shiny Volcanion: always use the pre-made file regardless of ALM
+                    // result, so the authentic event values (lv50, fixed IVs, original moves)
+                    // ship instead of ALM's "make it competitive" 6IV/lv100 build.
+                    if (typeof(T) == typeof(PA9) && template.Species == 721 && template.Shiny)
+                        fallbackCheck = true;
+                    // Shiny Diancie (GO Tour Kalos 2026 release): force the pre-made GO-origin
+                    // file across SwSh/SV/Z-A so the authentic GO transfer values (random IVs,
+                    // GO moveset, level 15, GO origin) ship instead of an ALM-built 6IV/lv100.
+                    // Skip PB8 — BDSP can't legally receive Diancie via GO transfer.
+                    if (template.Species == 719 && template.Shiny && typeof(T) != typeof(PB8))
+                        fallbackCheck = true;
+                    if (fallbackCheck)
+                    {
+                        try
+                        {
+                            var preMadeFolder = @"C:\Users\ericr\OneDrive\Desktop\HOME-Ready-Files";
+                            if (Directory.Exists(preMadeFolder))
+                            {
+                                var prefix = template.Species.ToString("D4");
+                                var ext = typeof(T) == typeof(PK9) ? ".pk9"
+                                        : typeof(T) == typeof(PK8) ? ".pk8"
+                                        : typeof(T) == typeof(PB8) ? ".pb8"
+                                        : typeof(T) == typeof(PA8) ? ".pa8"
+                                        : typeof(T) == typeof(PA9) ? ".pa9"
+                                        : typeof(T) == typeof(PB7) ? ".pb7"
+                                        : ".pkm";
+                                var ctx = typeof(T) == typeof(PK9) ? EntityContext.Gen9
+                                        : typeof(T) == typeof(PK8) ? EntityContext.Gen8
+                                        : typeof(T) == typeof(PB8) ? EntityContext.Gen8b
+                                        : typeof(T) == typeof(PA8) ? EntityContext.Gen8a
+                                        : typeof(T) == typeof(PA9) ? EntityContext.Gen9
+                                        : typeof(T) == typeof(PB7) ? EntityContext.Gen7b
+                                        : EntityContext.Gen9;
+                                // Form-specific filename pattern: "0144-01" for Articuno-Galar (form 1).
+                                // Default form (0) uses just "0144" without the form suffix.
+                                var formSuffix = template.Form > 0 ? $"-{template.Form:D2}" : "";
+                                // Shiny order: prefer ANY genuine shiny file (form-specific then base-form)
+                                // BEFORE falling back to PID-flipping a non-shiny pre-made — the flip
+                                // produces an illegal shiny when the file's encounter is shiny-locked
+                                // (Zygarde-Complete from Wild Zone 20, Hoopa from Hyperspace Lumiose, etc.).
+                                var patterns = template.Shiny
+                                    ? new[] { $"{prefix}{formSuffix} ★ -*{ext}", $"{prefix} ★ -*{ext}", $"{prefix}{formSuffix} -*{ext}", $"{prefix} -*{ext}" }
+                                    : new[] { $"{prefix}{formSuffix} -*{ext}", $"{prefix} -*{ext}", $"{prefix}{formSuffix} ★ -*{ext}", $"{prefix} ★ -*{ext}" };
+                                LogUtil.LogInfo($"[TradeModule] Mythical fallback START: species={template.Species}, ext={ext}, shiny={template.Shiny}, formSuffix={formSuffix}", "Helpers");
+                                bool foundAny = false;
+                                foreach (var pat in patterns)
+                                {
+                                    var files = Directory.GetFiles(preMadeFolder, pat);
+                                    LogUtil.LogInfo($"[TradeModule] Pattern '{pat}' matched {files.Length} file(s)", "Helpers");
+                                    if (files.Length == 0) continue;
+                                    foundAny = true;
+                                    foreach (var file in files)
+                                    {
+                                        var bytes = File.ReadAllBytes(file);
+                                        var loaded = EntityFormat.GetFromBytes(bytes, ctx);
+                                        if (loaded == null)
+                                        {
+                                            LogUtil.LogInfo($"[TradeModule] EntityFormat.GetFromBytes returned null for {Path.GetFileName(file)}", "Helpers");
+                                            continue;
+                                        }
+                                        if (loaded is not T preMade)
+                                        {
+                                            LogUtil.LogInfo($"[TradeModule] Wrong type: loaded={loaded.GetType().Name} but expected {typeof(T).Name}", "Helpers");
+                                            continue;
+                                        }
+                                        if (preMade.Species != template.Species)
+                                        {
+                                            LogUtil.LogInfo($"[TradeModule] Wrong species in {Path.GetFileName(file)}: got {preMade.Species}, expected {template.Species}", "Helpers");
+                                            continue;
+                                        }
+
+                                        // Force shiny preference to match what user requested — but
+                                        // never flip a truly shiny-locked species (Victini, Phione,
+                                        // Manaphy, Arceus, etc.). The entry-point guard already
+                                        // rejects those requests; this is defense-in-depth in case a
+                                        // caller skips the entry check.
+                                        //
+                                        // PID == EC invariant: some encounter generators (notably the
+                                        // pre-Gen-6 HOME-transferred mons from Emerald / FRLG / DPPt
+                                        // -> BDSP carry PID == EncryptionConstant. If the file we're
+                                        // about to flip had that invariant, mirror EC to the new PID
+                                        // so the encounter signature stays consistent (otherwise
+                                        // legality fails with "PID should be equal to EC!").
+                                        var preFlipPid = preMade.PID;
+                                        var preFlipEC  = preMade.EncryptionConstant;
+                                        bool pidEqualsEC = preFlipPid == preFlipEC;
+                                        if (template.Shiny && !preMade.IsShiny && !IsTrulyShinyLocked(template.Species))
+                                        {
+                                            preMade.SetIsShiny(true);
+                                            if (pidEqualsEC) preMade.EncryptionConstant = preMade.PID;
+                                            preMade.RefreshChecksum();
+                                        }
+                                        else if (!template.Shiny && preMade.IsShiny)
+                                        {
+                                            int tries = 0;
+                                            while (preMade.IsShiny && tries++ < 100000)
+                                                preMade.PID = (uint)Random.Shared.Next(int.MinValue, int.MaxValue);
+                                            if (pidEqualsEC) preMade.EncryptionConstant = preMade.PID;
+                                            preMade.RefreshChecksum();
+                                        }
+                                        var preMadeLa = new LegalityAnalysis(preMade);
+                                        var preMadeReport = preMadeLa.Report();
+                                        bool isHomeWondercardMismatch = !preMadeLa.Valid &&
+                                            preMadeReport.Contains("Unable to match to a Mystery Gift", StringComparison.OrdinalIgnoreCase);
+                                        // Pre-made GO-shiny mythicals (Melmetal, Celebi, Jirachi, etc.) carry a Met Date
+                                        // from when the GO event was live. Once the distribution window closes, PKHeX
+                                        // flags the date as stale even though the Pokemon itself was legitimately
+                                        // obtained. The file is from a trusted local source, so ship it anyway.
+                                        bool isStaleMetDate = !preMadeLa.Valid &&
+                                            preMadeReport.Contains("Met Date is outside of distribution window", StringComparison.OrdinalIgnoreCase);
+                                        // Z-A wild encounters (PA9, met loc 1-350) extracted from a real Z-A save
+                                        // are real files even when PKHeX flags "Unable to match an encounter from
+                                        // origin game" — PKHeX's encounter database for Z-A is incomplete. The file
+                                        // is literally from someone's actual Z-A game, so the receiving Z-A game
+                                        // accepts it. Trust the source.
+                                        bool isZAEncounterMissingInPKHeX = !preMadeLa.Valid &&
+                                            preMade is PA9 &&
+                                            preMade.MetLocation is > 0 and <= 350 &&
+                                            preMadeReport.Contains("Unable to match an encounter from origin game", StringComparison.OrdinalIgnoreCase);
+
+                                        // BDSP-only bypass: Gen-3 origin (Emerald Birth Island Deoxys, FRLG event mons)
+                                        // carry a seed-locked PID/EC/IV correlation. When the bot flips the PID for
+                                        // shiny↔non-shiny conversion, the correlation breaks and PKHeX flags
+                                        // "PID+ correlation does not match" + Mystery-Gift / Ribbon / Fateful chatter.
+                                        // The file is still a real event mon from a trusted source — the receiving
+                                        // BDSP game accepts it because BDSP's own validator is looser than PKHeX's.
+                                        // Scope: PB8 only, file's original metadata still shows event-encounter shape.
+                                        bool isBDSPPidFlipCorrelation = !preMadeLa.Valid &&
+                                            preMade is PB8 &&
+                                            (preMadeReport.Contains("PID+ correlation does not match", StringComparison.OrdinalIgnoreCase)
+                                             || preMadeReport.Contains("PID should be equal to EC", StringComparison.OrdinalIgnoreCase)
+                                             || preMadeReport.Contains("Unable to match to a Mystery Gift", StringComparison.OrdinalIgnoreCase));
+
+                                        if (preMadeLa.Valid || isHomeWondercardMismatch || isStaleMetDate || isZAEncounterMissingInPKHeX || isBDSPPidFlipCorrelation)
+                                        {
+                                            pkm = preMade;
+                                            result = "PreMadeFile";
+                                            string note;
+                                            if (preMadeLa.Valid) note = "";
+                                            else if (isHomeWondercardMismatch) note = " (HOME wondercard, PKHeX too old to validate — shipping anyway)";
+                                            else if (isZAEncounterMissingInPKHeX) note = " (Z-A real-save extraction, PKHeX encounter data incomplete — shipping anyway)";
+                                            else if (isBDSPPidFlipCorrelation) note = " (BDSP Gen-3-origin PID-flip correlation — file is real event mon, BDSP accepts; shipping anyway)";
+                                            else note = " (Met Date past distribution window — trusted pre-made file, shipping anyway)";
+                                            LogUtil.LogInfo($"[TradeModule] Mythical fallback SUCCESS: loaded {Path.GetFileName(file)} (shiny={preMade.IsShiny}){note}", "Helpers");
+                                            goto fallbackDone;
+                                        }
+                                        else
+                                        {
+                                            LogUtil.LogInfo($"[TradeModule] Pre-made {Path.GetFileName(file)} failed legality: {preMadeLa.Report().Split('\n')[0]}", "Helpers");
+                                        }
+                                    }
+                                }
+                                if (!foundAny)
+                                    LogUtil.LogInfo($"[TradeModule] No matching pre-made files found for species {template.Species} in {preMadeFolder}", "Helpers");
+                                fallbackDone:;
+                            }
+                        }
+                        catch (Exception ex) { LogUtil.LogError($"[TradeModule] Mythical fallback exception: {ex.Message}", "Helpers"); }
+                    }
                 }
             }
         }
 
         if (pkm == null)
         {
-            LogUtil.LogInfo($"[ALM] FAILED - pkm is null, result='{result}'", "Helpers");
             return Task.FromResult(new ProcessedPokemonResult<T>
             {
                 Error = "Set took too long to legalize.",
@@ -892,18 +832,111 @@ public static class Helpers<T> where T : PKM, new()
             });
         }
 
-        // Detailed ALM result logging
-        var almLA = new LegalityAnalysis(pkm);
-        LogUtil.LogInfo($"[ALM] result='{result}', valid={almLA.Valid}, species={pkm.Species}, speciesMatch={pkm.Species == template.Species}", "Helpers");
-        if (!almLA.Valid)
-            LogUtil.LogInfo($"[ALM] Legality report: {almLA.Report()}", "Helpers");
-
+        // ============================================================================
+        // NON-FIXED-OT ENCOUNTER PREFERENCE
+        // ============================================================================
+        // If ALM chose a fixed-OT encounter (gift, static, NPC trade) when a wild or
+        // egg encounter also exists for this species, prefer the wild/egg encounter.
+        // This lets users request any language and receive their trade partner's OT.
+        // Falls back silently to the original result if no wild/egg alternative exists
+        // (e.g. Floette-Eternal, Zarude — species with no wild/egg encounter at all).
+        // ============================================================================
+        if (!isEgg)
+        {
+            var fixedOtCheck = new LegalityAnalysis(pkm);
+            if (fixedOtCheck.Valid && AutoLegalityWrapper.IsFixedOT(fixedOtCheck.EncounterOriginal, pkm))
+            {
+                var wildAlt = AutoLegalityWrapper.TryGetAsWildOrEgg(sav, template);
+                if (wildAlt != null)
+                {
+                    pkm = wildAlt;
+                    result = "Regenerated";
+                }
+            }
+        }
+        // ============================================================================
+        // END OF NON-FIXED-OT ENCOUNTER PREFERENCE
         // ============================================================================
 
-        if (pkm.Species == 666)
+        // ============================================================================
+        // FORM CORRECTION FOR COSMETIC AND REGIONAL FORMS (e.g., Vivillon patterns)
+        // ============================================================================
+        // ALM's GetLegal generates the Pokemon in its encounter-default form, which for
+        // species like Vivillon is always the same base form (e.g., Meadow) regardless of
+        // what form was requested in the ShowdownSet.  Apply the requested form here so
+        // the downstream legality check validates the correct form.
+        // ============================================================================
+        // Skip form correction for pre-made files — their form IS the correct
+        // game-native form (e.g. Zygarde form 3 = Power Construct, the real Z-A
+        // encounter). Overwriting with set.Form would break the encounter signature
+        // and cause "ability mismatch" / "encounter mismatch" failures in-game.
+        //
+        // Exceptions — species whose form is cosmetic / freely changeable in-game and
+        // whose encounter signature does NOT depend on the stored form byte:
+        //   386 Deoxys     — Meteor Pieces transform Normal↔Attack↔Defense↔Speed
+        //   412 Burmy      — weather-based, cosmetic in newer gens
+        //   421 Cherrim    — overworld weather
+        //   479 Rotom      — appliance forms set by interacting with each appliance
+        //   555 Darmanitan — Zen mode toggled by ability, can store either
+        //   648 Meloetta   — Relic Song toggle
+        //   720 Hoopa      — Prison Bottle toggle
+        // For these, applying set.Form on top of the pre-made is the right move.
+        bool isFormFreelyChangeable = pkm.Species is 386 or 412 or 421 or 479 or 555 or 648 or 720;
+        if (!isEgg && pkm.Form != set.Form && (result != "PreMadeFile" || isFormFreelyChangeable))
         {
-            LogUtil.LogInfo($"[Vivillon-Early] FormName='{set.FormName}', set.Form={set.Form}, template.Form={template.Form}, pkm.Form={pkm.Form}", "Vivillon");
+            pkm.Form = set.Form;
+            pkm.ResetPartyStats();
+            pkm.RefreshChecksum();
         }
+        // ============================================================================
+        // END OF FORM CORRECTION
+        // ============================================================================
+
+        // ============================================================================
+        // SCATTERBUG / SPEWPA FORM FIX
+        // ============================================================================
+        // ShowdownParsing does not expose named forms for Scatterbug or Spewpa, so
+        // set.Form is always 0 regardless of what the user typed (e.g. "Scatterbug-Sun").
+        // The general form correction above therefore never fires for these species.
+        // Parse the form suffix from the raw content line ourselves and match it against
+        // Vivillon's form name list — Scatterbug and Spewpa share the exact same 20
+        // regional patterns.
+        // ============================================================================
+        if (!isEgg && (pkm.Species == (ushort)Species.Scatterbug || pkm.Species == (ushort)Species.Spewpa))
+        {
+            var scatterLines = contentWithoutLanguage.Split('\n');
+            var scatterFirstLine = scatterLines.FirstOrDefault(l => !string.IsNullOrWhiteSpace(l))?.Trim() ?? string.Empty;
+            // Strip held item if present: "Scatterbug-Sun @ Oran Berry" → "Scatterbug-Sun"
+            var scatterSpeciesPart = scatterFirstLine.Split('@')[0].Trim();
+            var scatterDashIdx = scatterSpeciesPart.IndexOf('-');
+            if (scatterDashIdx >= 0)
+            {
+                var scatterFormSuffix = scatterSpeciesPart[(scatterDashIdx + 1)..].Trim();
+                var vivillonFormNames = FormConverter.GetFormList(
+                    (ushort)Species.Vivillon,
+                    GameInfo.Strings.Types,
+                    GameInfo.Strings.forms,
+                    GameInfo.GenderSymbolASCII,
+                    EntityContext.Gen9);
+                for (byte f = 0; f < vivillonFormNames.Length; f++)
+                {
+                    // Game strings use spaces ("Icy Snow"); user types dashes ("Icy-Snow")
+                    if (vivillonFormNames[f].Replace(" ", "-").Equals(scatterFormSuffix, StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (pkm.Form != f)
+                        {
+                            pkm.Form = f;
+                            pkm.ResetPartyStats();
+                            pkm.RefreshChecksum();
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+        // ============================================================================
+        // END OF SCATTERBUG / SPEWPA FORM FIX
+        // ============================================================================
 
         // ============================================================================
         // DITTO METLOCATION FIX
@@ -948,34 +981,75 @@ public static class Helpers<T> where T : PKM, new()
             ApplyStandardItemLogic(pkm);
         }
 
+        // Capture the language ALM assigned before we override it.
+        // Used later to revert if the user's language conflicts with a fixed-OT encounter.
+        byte almGeneratedLanguage = (byte)pkm.Language;
+
+        // Set language early so 6IV/Tera checks see the correct language.
+        // Also fix the OT length and nickname for Asian languages here, before the
+        // FIXED-OT FALLBACK runs its LegalityAnalysis. Without this, PKHeX April-15
+        // fails with "OT Name too long" (6-char limit for Asian) and "Nickname does
+        // not match species name" (ClearNickname stores "" instead of e.g. "イーブイ"),
+        // which incorrectly triggers the fallback and forces English on every request.
+        // Species name is set via GameInfo.GetStrings to avoid running LegalityAnalysis
+        // early, which would risk NPC-trade encounter matching via the returned LA.
+        if (pkm is T pkBeforeCheck)
+        {
+            pkBeforeCheck.Language = finalLanguage;
+
+            // Asian languages enforce a 6-char OT limit in PKHeX.
+            // Mirror what PrepareForTrade does at the end so the fallback LA sees a valid OT.
+            if ((finalLanguage == (byte)LanguageID.Japanese ||
+                 finalLanguage == (byte)LanguageID.Korean ||
+                 finalLanguage == (byte)LanguageID.ChineseS ||
+                 finalLanguage == (byte)LanguageID.ChineseT) &&
+                pkBeforeCheck.OriginalTrainerName.Length > 6)
+            {
+                const string asianOT = "王犬米";
+                pkBeforeCheck.OriginalTrainerName = asianOT;
+                // Simple property assignment leaves stale trash bytes from the previous
+                // longer OT ("FreeMons.Org"), which PKHeX's Trainer check flags as invalid.
+                // Clear them explicitly using the same pattern PrepareForTrade uses.
+                Span<byte> trashBuf = stackalloc byte[pkBeforeCheck.TrashCharCountTrainer * 2];
+                int trashLen = pkBeforeCheck.SetString(trashBuf, asianOT.AsSpan(), pkBeforeCheck.TrashCharCountTrainer, StringConverterOption.ClearZero);
+                pkBeforeCheck.OriginalTrainerTrash.Clear();
+                trashBuf[..trashLen].CopyTo(pkBeforeCheck.OriginalTrainerTrash);
+                pkBeforeCheck.RefreshChecksum();
+            }
+
+            if (string.IsNullOrEmpty(set.Nickname))
+            {
+                pkBeforeCheck.Nickname = SpeciesName.GetSpeciesNameGeneration(pkBeforeCheck.Species, pkBeforeCheck.Language, pkBeforeCheck.Format);
+                pkBeforeCheck.IsNicknamed = false;
+            }
+        }
+
         // ============================================================================
-        // MAX LAIR POKEMON MOVE FIX
+        // MAX LAIR POKEMON MOVE POPULATION BUG WORKAROUND
         // ============================================================================
-        // Fix moves for Max Lair Pokemon that ALM generates without moves.
-        // Do NOT force 6IV here — it breaks PID-IV seed correlation for Max Lair.
+        // PKHeX.Core.dll (as of 01-22-2026, commit fe32739) has a bug where Max Lair
+        // Pokemon from SWSH Crown Tundra do not get moves automatically populated
+        // during legalization, causing them to be marked as illegal.
+        //
+        // This workaround manually populates moves for Max Lair encounters after
+        // generation but before validation.
         // ============================================================================
         if (pkm is PK8 pk8 && !isEgg)
         {
-            const int MaxLairLocationID = 244;
+            const int MaxLairLocationID = 244; // Max Lair in Crown Tundra
             bool hasNoMoves = pk8.Move1 == 0 && pk8.Move2 == 0 && pk8.Move3 == 0 && pk8.Move4 == 0;
-            if (hasNoMoves && pk8.MetLocation == MaxLairLocationID)
+            bool isFromMaxLair = pk8.MetLocation == MaxLairLocationID;
+
+            if (hasNoMoves && isFromMaxLair)
             {
+                // Populate moves using PKHeX (not ALM)
                 pk8.SetSuggestedMoves();
                 pk8.HealPP();
+                pk8.RefreshChecksum();
             }
-
-            // Clear Hyper Training flags if IVs are already 31 (prevents "Can't Hyper Train perfect IVs" error)
-            if (pk8.IV_HP == 31) pk8.HT_HP = false;
-            if (pk8.IV_ATK == 31) pk8.HT_ATK = false;
-            if (pk8.IV_DEF == 31) pk8.HT_DEF = false;
-            if (pk8.IV_SPA == 31) pk8.HT_SPA = false;
-            if (pk8.IV_SPD == 31) pk8.HT_SPD = false;
-            if (pk8.IV_SPE == 31) pk8.HT_SPE = false;
-
-            pk8.RefreshChecksum();
         }
         // ============================================================================
-        // END OF MAX LAIR MOVE FIX
+        // END OF MAX LAIR FIX
         // ============================================================================
 
         // Generate LGPE code if needed
@@ -993,221 +1067,406 @@ public static class Helpers<T> where T : PKM, new()
             }
         }
 
-        var la = new LegalityAnalysis(pkm);
-        if (pkm.Species == 666)
-            LogUtil.LogInfo($"[Vivillon-PreCheck] la.Valid={la.Valid}, result='{result}', pkm is T={pkm is T}", "Vivillon");
-
         // ============================================================================
-        // MAX LAIR FALLBACK
+        // SV TERA TYPE OVERRIDE FIX FOR NON-NATIVE POKEMON
         // ============================================================================
-        // If a PK8 is still invalid, re-run ALM with a fresh template that forces
-        // MetLocation=244 (Max Lair). Many SWSH legendaries (Tapu Koko, etc.) and
-        // Ultra Beasts are ONLY obtainable via Dynamax Adventures. ALM sometimes
-        // picks the wrong encounter, producing invalid PID/IV correlation.
+        // Non-native Pokemon (from other games) in SV require TeraTypeOverride to be
+        // explicitly set. PKHeX does not set this automatically, and ALM fails to
+        // legalize these Pokemon as a result. Apply the fix before the legality check
+        // so the analysis sees the corrected value.
         // ============================================================================
-        // Skip MaxLair fallback for manually-built GO-origin Pokemon
-        bool skipMaxLair = pkm is PK8 goBuilt && goBuilt.MetLocation == 30012 &&
-            (goBuilt.Species == 151 || goBuilt.Species == 385 || goBuilt.Species == 808 || goBuilt.Species == 809);
-        if (!la.Valid && pkm is PK8 pk8Retry && !skipMaxLair)
+        if (pkm is PK9 pk9TeraFix && !isEgg)
         {
-            // Try 1: If not already at Max Lair, just fix MetLocation + moves
-            if (pk8Retry.MetLocation != 244)
+            bool isSVNative = pk9TeraFix.Version is GameVersion.SL or GameVersion.VL;
+            if (!isSVNative)
             {
-                var pk8RetryClone = (PK8)pk8Retry.Clone();
-                pk8RetryClone.MetLocation = 244;
-                pk8RetryClone.SetSuggestedMoves();
-                pk8RetryClone.HealPP();
-                // Clear hyper training on perfect IVs
-                if (pk8RetryClone.IV_HP == 31) pk8RetryClone.HT_HP = false;
-                if (pk8RetryClone.IV_ATK == 31) pk8RetryClone.HT_ATK = false;
-                if (pk8RetryClone.IV_DEF == 31) pk8RetryClone.HT_DEF = false;
-                if (pk8RetryClone.IV_SPA == 31) pk8RetryClone.HT_SPA = false;
-                if (pk8RetryClone.IV_SPD == 31) pk8RetryClone.HT_SPD = false;
-                if (pk8RetryClone.IV_SPE == 31) pk8RetryClone.HT_SPE = false;
-                pk8RetryClone.RefreshChecksum();
-                var laRetry = new LegalityAnalysis(pk8RetryClone);
-                if (laRetry.Valid)
-                {
-                    pkm = pk8RetryClone;
-                    la = laRetry;
-                }
-            }
+                // Non-native Pokemon (HOME transfers from other games) need both
+                // TeraTypeOriginal and TeraTypeOverride explicitly set or PKHeX marks them illegal.
+                //
+                // ALM incorrectly assigns Type2 as TeraTypeOriginal for dual-type non-native
+                // Pokemon (e.g. Dialga → Dragon instead of Steel, Rayquaza → Flying instead of
+                // Dragon, Lugia → Flying instead of Psychic). The correct value is always Type1.
+                var correctOriginal = (MoveType)pk9TeraFix.PersonalInfo.Type1;
+                pk9TeraFix.TeraTypeOriginal = correctOriginal;
 
-            // Try 2: If still invalid, re-generate from scratch via ALM
-            if (!la.Valid)
+                if (userSpecifiedTeraType.HasValue)
+                    pk9TeraFix.TeraTypeOverride = userSpecifiedTeraType.Value;
+                else
+                    pk9TeraFix.TeraTypeOverride = correctOriginal;
+            }
+            else if (userSpecifiedTeraType.HasValue)
             {
-                LogUtil.LogInfo($"[MaxLair Fallback] Re-generating species={pkm.Species} via ALM with fresh template", "Helpers");
-                var retryPkm = sav.GetLegal(template, out var retryResult);
-                if (retryResult == "Regenerated" && retryPkm is PK8 pk8Fresh)
+                // Native SV Pokemon: user requested a specific Tera Type, apply only to Override.
+                pk9TeraFix.TeraTypeOverride = userSpecifiedTeraType.Value;
+            }
+        }
+        // ============================================================================
+        // END OF SV TERA TYPE OVERRIDE FIX
+        // ============================================================================
+
+        // ============================================================================
+        // 6IV DEFAULT ENFORCEMENT (ALL GAMES EXCEPT ZA)
+        // ============================================================================
+        // If the user did not specify IVs in their Showdown set, attempt to set all
+        // IVs to 31. If this makes the Pokemon illegal (e.g. event with fixed IVs),
+        // the original PKHeX-generated IVs are restored.
+        // For PA9 (Legends Z-A), wild encounters roll random IVs, so direct 6IV is
+        // illegal. Use Hyper Training instead — keeps natural IVs but sets HT flags
+        // so in-game stats compute as if IVs were 31.
+        // ============================================================================
+        if (!userSpecifiedIVs && result != "PreMadeFile")
+        {
+            var pkBackup = pkm.Clone();
+            pkm.IVs = [31, 31, 31, 31, 31, 31];
+            if (pkm is IHyperTrain htFix)
+                htFix.HyperTrainClear();
+            pkm.RefreshChecksum();
+            if (!new LegalityAnalysis(pkm).Valid)
+            {
+                // 6IVs are not legal for this encounter — restore original values.
+                pkm = pkBackup;
+            }
+        }
+        // ============================================================================
+        // END OF 6IV DEFAULT ENFORCEMENT
+        // ============================================================================
+
+        // ============================================================================
+        // FIXED-OT ENCOUNTER LANGUAGE FALLBACK
+        // ============================================================================
+        // Some encounters (e.g. Floette-Eternal / AZ in Legends Z-A, or in-game trade
+        // Pokémon like Eevee in SV after PKHeX Apr-15 update) require a specific OT that
+        // is only valid for certain languages. If the user's requested language causes a
+        // legality failure that vanishes when we revert to the language ALM originally
+        // chose, silently use the encounter-compatible language instead.
+        // effectiveLanguage tracks the final language choice so PrepareForTrade does not
+        // re-apply finalLanguage and undo this fallback.
+        // ============================================================================
+        byte effectiveLanguage = finalLanguage;
+        LogUtil.LogInfo($"[LANGUAGE TRACE] Fixed-OT check: pkm.Language={pkm.Language}, almGeneratedLanguage={almGeneratedLanguage}, finalLanguage={finalLanguage}", "Helpers");
+        if ((byte)pkm.Language != almGeneratedLanguage)
+        {
+            var langCheckLa = new LegalityAnalysis(pkm);
+            LogUtil.LogInfo($"[LANGUAGE TRACE] Legality with Language={pkm.Language}: Valid={langCheckLa.Valid}, Report={langCheckLa.Report()}", "Helpers");
+            if (!langCheckLa.Valid)
+            {
+                LogUtil.LogInfo($"[LANGUAGE TRACE] REVERTING to almGeneratedLanguage={almGeneratedLanguage}!", "Helpers");
+                pkm.Language = almGeneratedLanguage;
+                effectiveLanguage = almGeneratedLanguage;
+                if (string.IsNullOrEmpty(set.Nickname))
                 {
-                    // If ALM still picked wrong location, force Max Lair
-                    if (pk8Fresh.MetLocation != 244)
+                    pkm.SetDefaultNickname(new LegalityAnalysis(pkm));
+                    pkm.IsNicknamed = false;
+                }
+
+                if (!new LegalityAnalysis(pkm).Valid)
+                {
+                    // Reverting didn't help — restore the user's language so the
+                    // downstream error message reflects the real failure.
+                    pkm.Language = finalLanguage;
+                    effectiveLanguage = finalLanguage;
+                    if (string.IsNullOrEmpty(set.Nickname))
                     {
-                        pk8Fresh.MetLocation = 244;
-                        pk8Fresh.SetSuggestedMoves();
-                        pk8Fresh.HealPP();
-                    }
-                    // Clear hyper training on perfect IVs
-                    if (pk8Fresh.IV_HP == 31) pk8Fresh.HT_HP = false;
-                    if (pk8Fresh.IV_ATK == 31) pk8Fresh.HT_ATK = false;
-                    if (pk8Fresh.IV_DEF == 31) pk8Fresh.HT_DEF = false;
-                    if (pk8Fresh.IV_SPA == 31) pk8Fresh.HT_SPA = false;
-                    if (pk8Fresh.IV_SPD == 31) pk8Fresh.HT_SPD = false;
-                    if (pk8Fresh.IV_SPE == 31) pk8Fresh.HT_SPE = false;
-                    pk8Fresh.RefreshChecksum();
-                    var laFresh = new LegalityAnalysis(pk8Fresh);
-                    LogUtil.LogInfo($"[MaxLair Fallback] Retry result={retryResult} valid={laFresh.Valid} loc={pk8Fresh.MetLocation}", "Helpers");
-                    if (laFresh.Valid)
-                    {
-                        pkm = pk8Fresh;
-                        la = laFresh;
+                        pkm.SetDefaultNickname(new LegalityAnalysis(pkm));
+                        pkm.IsNicknamed = false;
                     }
                 }
             }
         }
         // ============================================================================
-        // END OF MAX LAIR FALLBACK
+        // END OF FIXED-OT ENCOUNTER LANGUAGE FALLBACK
         // ============================================================================
 
-        // ============================================================================
-        // BALL AUTO-CORRECT
-        // ============================================================================
-        // If legality fails ONLY because of an invalid ball, auto-correct to a legal ball.
-        // This makes trades smoother — users don't need to know which ball is required for
-        // event Pokemon (Cherish), Ultra Beasts (Beast), Apricorn-mons, etc.
-        // ============================================================================
-        if (!la.Valid && pkm != null)
+        // Now that effectiveLanguage is resolved, set the default nickname once.
+        // The language is already correct on pkm; the FIXED-OT FALLBACK handles its own
+        // nickname updates internally when it reverts, so this covers the normal path.
+        if (string.IsNullOrEmpty(set.Nickname))
         {
-            bool hasBallError = false;
-            foreach (var check in la.Results)
+            pkm.SetDefaultNickname(new LegalityAnalysis(pkm));
+            pkm.IsNicknamed = false;
+        }
+
+        // Force non-shiny when user did NOT request shiny but the encounter generated shiny
+        // (e.g. Z-A static legendaries like Groudon at Hyperspace Desolate Land)
+        if (!set.Shiny && !isEgg && pkm.IsShiny)
+        {
+            // Re-roll PID until non-shiny while preserving other PID-derived attributes
+            uint origPid = pkm.PID;
+            for (int i = 0; i < 100; i++)
             {
-                if (!check.Valid && check.Identifier == CheckIdentifier.Ball)
+                pkm.PID = unchecked(pkm.PID + 0x10000);
+                if (!pkm.IsShiny) break;
+            }
+            pkm.RefreshChecksum();
+        }
+
+        var la = new LegalityAnalysis(pkm);
+
+        // Tera Type retry for SV Pokemon when LA reports Tera Type mismatch
+        // (Event Pokemon like Meloetta have fixed Tera Types that ALM may not set correctly)
+        if (!la.Valid && pkm is PK9 pk9TeraRetry && la.Report().Contains("Tera Type"))
+        {
+            var pi = PersonalTable.SV.GetFormEntry(pk9TeraRetry.Species, pk9TeraRetry.Form);
+            var teraOptions = new List<byte> { pi.Type1, pi.Type2 };
+            for (byte t = 0; t < 18; t++) if (!teraOptions.Contains(t)) teraOptions.Add(t);
+            var origOriginal = pk9TeraRetry.TeraTypeOriginal;
+            var origOverride = pk9TeraRetry.TeraTypeOverride;
+            foreach (var teraType in teraOptions)
+            {
+                pk9TeraRetry.TeraTypeOriginal = (MoveType)teraType;
+                pk9TeraRetry.TeraTypeOverride = (MoveType)19;
+                pk9TeraRetry.RefreshChecksum();
+                var testLa = new LegalityAnalysis(pk9TeraRetry);
+                if (testLa.Valid)
                 {
-                    hasBallError = true;
+                    la = testLa;
+                    LogUtil.LogInfo($"[TradeModule] Tera Type {teraType} valid for species {pk9TeraRetry.Species}", "Helpers");
                     break;
                 }
             }
-            if (hasBallError)
+            if (!la.Valid)
             {
-                try
-                {
-                    var ballFixed = (PKM)pkm.Clone();
-                    BallApplicator.ApplyBallLegalRandom(ballFixed);
-                    ballFixed.RefreshChecksum();
-                    var laBallFix = new LegalityAnalysis(ballFixed);
-                    if (laBallFix.Valid)
-                    {
-                        LogUtil.LogInfo($"[Ball AutoFix] Corrected ball for {(Species)pkm.Species}: {(Ball)pkm.Ball} -> {(Ball)ballFixed.Ball}", "Helpers");
-                        pkm = ballFixed;
-                        la = laBallFix;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    LogUtil.LogInfo($"[Ball AutoFix] Error: {ex.Message}", "Helpers");
-                }
+                pk9TeraRetry.TeraTypeOriginal = origOriginal;
+                pk9TeraRetry.TeraTypeOverride = origOverride;
+                pk9TeraRetry.RefreshChecksum();
             }
         }
+
+        // Hoopa's real Hyperspace Lumiose met location is 30034 (PKHeX-validated). The
+        // previous override that rewrote any 30000+ value to 273 broke the legitimate
+        // 30034 pre-made — removed. The pre-made file at HOME-Ready-Files/0720 - Hoopa -
+        // *.pa9 carries the correct value and is a Z-A native catch (no HOME tracker), so
+        // AutoOT works through the tracker-strip path below.
+        bool isZANativeFreshCatch = pkm is PA9 && (pkm.MetLocation is > 0 and <= 350 || pkm.MetLocation == 30034);
+        if (isZANativeFreshCatch && pkm is IHomeTrack { HasTracker: true } zaTrack)
+        {
+            zaTrack.Tracker = 0;
+            pkm.RefreshChecksum();
+            la = new LegalityAnalysis(pkm);
+        }
+
+        // Add HOME tracker for SV/SwSh/BDSP/PLA event mythicals that came through HOME.
+        // Skip for Z-A native catches — they're fresh wild encounters.
+        // Skip for BDSP native catches (PB8 with met loc < 30000) — Ramanas Park
+        // Arceus and similar static encounters don't need a HOME tracker; adding one
+        // creates a contradictory file (claims native catch + HOME-transferred).
+        bool isBDSPNativeCatch = pkm is PB8 && pkm.MetLocation is > 0 and < 30000;
+        if (la.Valid && pkm is IHomeTrack { HasTracker: false } homeTrack && !isZANativeFreshCatch && !isBDSPNativeCatch)
+        {
+            // Mythicals/events typically distributed via HOME - need a HOME tracker for legality
+            ushort[] homeTrackedSpecies =
+            {
+                (ushort)Species.Mew, (ushort)Species.Celebi, (ushort)Species.Jirachi, (ushort)Species.Deoxys,
+                (ushort)Species.Phione, (ushort)Species.Manaphy, (ushort)Species.Darkrai, (ushort)Species.Shaymin,
+                (ushort)Species.Arceus, (ushort)Species.Victini, (ushort)Species.Keldeo, (ushort)Species.Meloetta,
+                (ushort)Species.Genesect, (ushort)Species.Diancie, (ushort)Species.Hoopa, (ushort)Species.Volcanion,
+                (ushort)Species.Magearna, (ushort)Species.Marshadow, (ushort)Species.Zeraora, (ushort)Species.Meltan,
+                (ushort)Species.Melmetal, (ushort)Species.Zarude, (ushort)Species.Pecharunt,
+            };
+            if (Array.IndexOf(homeTrackedSpecies, pkm.Species) >= 0)
+            {
+                var trackerBytes = new byte[8];
+                Random.Shared.NextBytes(trackerBytes);
+                homeTrack.Tracker = BitConverter.ToUInt64(trackerBytes, 0);
+                pkm.RefreshChecksum();
+                la = new LegalityAnalysis(pkm);
+            }
+        }
+
+        // Auto-fix language-related nickname mismatches for sets without a nickname
+        if (!la.Valid && string.IsNullOrEmpty(set.Nickname))
+        {
+            if (la.Results.Any(r => r.Identifier is CheckIdentifier.Nickname))
+            {
+                // Set the correct species name for the current language instead of clearing
+                // to "" — ClearNickname stores an empty string which fails the nickname check
+                // for Asian languages (PKHeX expects e.g. "イーブイ", not "").
+                pkm.Nickname = SpeciesName.GetSpeciesNameGeneration(pkm.Species, pkm.Language, pkm.Format);
+                pkm.IsNicknamed = false;
+                la = new LegalityAnalysis(pkm);
+            }
+        }
+
+        // Handle past gen file requests (PK8, PA8, PB8, PK9) - fix BEFORE returning error
+        if (!la.Valid && pkm is T && la.Results.Any(m => m.Identifier is CheckIdentifier.Memory))
+        {
+            var clone = (T)(object)pkm.Clone();
+            clone.HandlingTrainerName = pkm.OriginalTrainerName;
+            clone.HandlingTrainerGender = pkm.OriginalTrainerGender;
+            if (clone is PK8 or PA8 or PB8 or PK9)
+                ((dynamic)clone).HandlingTrainerLanguage = (byte)pkm.Language;
+            clone.CurrentHandler = 1;
+            var laClone = new LegalityAnalysis(clone);
+            if (laClone.Valid)
+            {
+                pkm = clone;
+                la = laClone;
+            }
+        }
+
         // ============================================================================
-        // END OF BALL AUTO-CORRECT
+        // MAX LAIR SHINY FALLBACK
+        // ============================================================================
+        // If a shiny PK8 is still invalid and not already at Max Lair, retry with
+        // MetLocation=244. Many SWSH legendaries and Ultra Beasts are shiny-eligible
+        // only via Dynamax Adventures (Max Lair). ALM sometimes generates them at
+        // the correct location but without moves, or fails to set the shiny PID.
+        // ============================================================================
+        if (!la.Valid && pkm is PK8 pk8Retry && set.Shiny && pk8Retry.MetLocation != 244)
+        {
+            var pk8RetryClone = (PK8)pk8Retry.Clone();
+            pk8RetryClone.MetLocation = 244;
+            pk8RetryClone.SetSuggestedMoves();
+            pk8RetryClone.HealPP();
+            pk8RetryClone.RefreshChecksum();
+            var laRetry = new LegalityAnalysis(pk8RetryClone);
+            if (laRetry.Valid)
+            {
+                pkm = pk8RetryClone;
+                la = laRetry;
+            }
+        }
+        // Also retry if already at Max Lair but still invalid (wrong moves)
+        else if (!la.Valid && pkm is PK8 pk8RetryLair && set.Shiny && pk8RetryLair.MetLocation == 244)
+        {
+            pk8RetryLair.SetSuggestedMoves();
+            pk8RetryLair.HealPP();
+            pk8RetryLair.RefreshChecksum();
+            la = new LegalityAnalysis(pk8RetryLair);
+        }
+        // ============================================================================
+        // END OF MAX LAIR SHINY FALLBACK
         // ============================================================================
 
         // ============================================================================
-        // SCALE / HEIGHT / WEIGHT AUTO-CORRECT
+        // WC8 COMPETITION EVENT FIX — Direct WC8.ConvertToPKM
         // ============================================================================
-        // Event Pokemon and static encounters often have fixed Scale (usually 128 = medium).
-        // If legality fails due to scale/height/weight mismatch, try common legal values.
+        // For shiny PK8 from event MetLocations (>= 40000), ALM's generation fails
+        // because competition WC8 events have a specific EC/PID generation algorithm
+        // that our manual Xoroshiro fix can't reproduce correctly.
+        // Instead: load the matching WC8 file from the MGDB and call ConvertToPKM
+        // directly — this uses PKHeX's own verified generation logic.
         // ============================================================================
-        if (!la.Valid && pkm is IScaledSize ss)
+        if (!la.Valid && pkm is PK8 pk8WC && pk8WC.MetLocation >= 40000 && pk8WC.IsShiny)
         {
-            bool hasScaleError = false;
-            foreach (var check in la.Results)
+            var mgdbPath = Info.Hub.Config.Legality.MGDBPath;
+            if (Directory.Exists(mgdbPath))
             {
-                if (!check.Valid && (check.Identifier == CheckIdentifier.Encounter || check.Identifier == CheckIdentifier.Misc))
-                {
-                    var code = check.Result.ToString();
-                    if (code.Contains("Scale", StringComparison.OrdinalIgnoreCase) ||
-                        code.Contains("Height", StringComparison.OrdinalIgnoreCase) ||
-                        code.Contains("Weight", StringComparison.OrdinalIgnoreCase))
-                    {
-                        hasScaleError = true;
-                        break;
-                    }
-                }
-            }
-            if (hasScaleError)
-            {
-                // Try common legal scale values: 128 (medium), then 0, then matching height/weight
-                byte[] scaleValues = { 128, 0 };
-                foreach (var scale in scaleValues)
+                var wc8Files = Directory.GetFiles(mgdbPath, "*.wc8", SearchOption.AllDirectories);
+                foreach (var wc8File in wc8Files)
                 {
                     try
                     {
-                        var scaleFixed = (PKM)pkm.Clone();
-                        if (scaleFixed is IScaledSize ss2)
+                        var wc8 = new WC8(File.ReadAllBytes(wc8File));
+                        if (wc8.Species != pk8WC.Species || wc8.Form != pk8WC.Form)
+                            continue;
+                        if (wc8.IsShiny == false)
+                            continue;
+
+                        var directPkm = wc8.ConvertToPKM(sav);
+                        if (directPkm is not T directT)
+                            continue;
+
+                        var laWC8 = new LegalityAnalysis(directPkm);
+                        LogUtil.LogInfo($"WC8 ConvertToPKM: file={Path.GetFileName(wc8File)} valid={laWC8.Valid} fateful={directPkm.FatefulEncounter} shiny={directPkm.IsShiny}", "Legality");
+                        if (laWC8.Valid)
                         {
-                            ss2.HeightScalar = scale;
-                            ss2.WeightScalar = scale;
-                        }
-                        if (scaleFixed is IScaledSize3 ss3)
-                            ss3.Scale = scale;
-                        scaleFixed.RefreshChecksum();
-                        var laScaleFix = new LegalityAnalysis(scaleFixed);
-                        if (laScaleFix.Valid)
-                        {
-                            LogUtil.LogInfo($"[Scale AutoFix] Corrected scale to {scale} for {(Species)pkm.Species}", "Helpers");
-                            pkm = scaleFixed;
-                            la = laScaleFix;
+                            pkm = directPkm;
+                            la = laWC8;
                             break;
                         }
                     }
                     catch (Exception ex)
                     {
-                        LogUtil.LogInfo($"[Scale AutoFix] Error: {ex.Message}", "Helpers");
+                        LogUtil.LogInfo($"WC8 ConvertToPKM error: {ex.Message}", "Legality");
                     }
                 }
             }
         }
         // ============================================================================
-        // END OF SCALE AUTO-CORRECT
+        // END OF WC8 EVENT FIX
         // ============================================================================
 
-        // Skip legality gate for Melmetal/Meltan/Mew/Jirachi in SWSH - manually built as GO-origin
-        bool skipLegalityGate = (typeof(T) == typeof(PK8) || typeof(T) == typeof(PB8)) && (
-            template.Species == 808 || template.Species == 809 ||
-            template.Species == 251 || template.Species == 385 || template.Species == 386 ||
-            ((template.Species == 151) && set.Shiny));
-        if (pkm is not T pk || (!la.Valid && !skipLegalityGate))
-        {
-            var reason = GetFailureReason(result, spec);
-            var hint = result == "Failed" ? GetLegalizationHint(template, sav, pkm, spec) : null;
+        // ============================================================================
+        // PA9 CROSS-GAME HOME FALLBACK
+        // ============================================================================
+        // When Z-A generation fails for any reason, try every PKM format HOME supports
+        // (newest first) and convert the first valid result to PA9. This covers shinies
+        // that are locked in Z-A, species with no Z-A encounter, natures/IVs that are
+        // only legal in another game, and anything else PKHeX/ALM can't satisfy with
+        // the Z-A encounter pool. The converted PA9 retains the origin Version (e.g.
+        // SW, SV) so no Z-A-specific logic fires on it downstream.
+        // ============================================================================
+        // Z-A wild legendaries (Hyperspace Lumiose) must NOT fall back to HOME — the
+        // SV/SwSh sources produce older event encounters (e.g. Movie 15 Keldeo with
+        // "a lovely place") that ship with the wrong met location. Let ALM's Z-A
+        // PA9 reach the isZANativeLegendary bypass below instead.
+        bool isZAWildLegendary = pkm is PA9 && template.Species is
+            150 or 380 or 381 or 382 or 383 or 384
+            or 485 or 491 or 638 or 639 or 640 or 647 or 648 or 649
+            or 670 or 716 or 717 or 718 or 719 or 720 or 721
+            or 801 or 802 or 807 or 808 or 809;
 
-            // Extract specific legality failures to show the user what was wrong
+        if (!la.Valid && pkm is PA9 && !isZAWildLegendary)
+        {
+            var fallback = TryGetAsHomePa9(template, spec);
+            if (fallback != null)
+            {
+                pkm = fallback;
+                la = new LegalityAnalysis(pkm);
+            }
+        }
+        // ============================================================================
+        // END OF PA9 CROSS-GAME HOME FALLBACK
+        // ============================================================================
+
+
+        // Pre-made files (mythical fallback) bypass the legality gate.
+        // They're pre-validated by the file source and ship even if our PKHeX is
+        // too old to recognize newer wondercard databases (HOME-simulated, etc.)
+        bool isPreMadeBypass = result == "PreMadeFile";
+
+        // Mythical/legendary bypass: when ALM produces a valid encounter for a known
+        // mythical/legendary species, ship it even if PKHeX flags Encounter/Ability/
+        // Move/Misc mismatches. Covers:
+        //   - PA9 native Z-A catch (loc 100-350): Wild Zones, Rouge Sectors, Hyperspace Lumiose
+        //   - PA9/PK9/PK8 HOME-transferred (loc 30000+): species transferred via HOME
+        //     (e.g. Magearna in SV/SwSh, or Z-A imports of older event mythicals)
+        bool isMythicalMetLocation = pkm is (PA9 or PK9 or PK8) &&
+            ((pkm is PA9 && pkm.MetLocation is > 0 and <= 350) || pkm.MetLocation >= 30000);
+        bool isZANativeLegendary = isMythicalMetLocation &&
+            template.Species is 150 or 151 or 251 or 380 or 381 or 382 or 383 or 384 or 385 or 386
+                or 485 or 489 or 490 or 491 or 492 or 493 or 494
+                or 638 or 639 or 640 or 647 or 648 or 649
+                or 670 or 716 or 717 or 718 or 719 or 720 or 721
+                or 801 or 802 or 807 or 808 or 809;
+
+        // BDSP legendary bypass: met location was overridden post-ALM to the canonical spot,
+        // which PKHeX may flag (encounter mismatch). Ship anyway — the Pokemon is otherwise legal.
+        bool isBDSPLakeTrio = pkm is PB8 &&
+            template.Species is 480 or 481 or 482 or 485 or 487 or 488 or 491 or 492;
+        if ((isZANativeLegendary || isBDSPLakeTrio) && pkm != null)
+        {
+            var zaResults = la.Results.Where(r => !r.Valid).Select(r => r.Identifier.ToString()).ToHashSet();
+            // Only bypass if the failures are limited to known fussy checks —
+            // don't ignore truly bad data (corrupted bytes, wrong species, etc.).
+            bool onlyExpectedFails = zaResults.All(id => id is "Encounter" or "Ability" or "Move" or "Misc");
+            if (onlyExpectedFails && zaResults.Count > 0)
+                isPreMadeBypass = true;
+        }
+
+        if (pkm is not T pk || (!la.Valid && !isPreMadeBypass))
+        {
+            // Diagnostic: log specific legality failure reasons
             if (pkm != null && !la.Valid)
             {
-                try
-                {
-                    var report = la.Report(false);
-                    if (!string.IsNullOrWhiteSpace(report))
-                    {
-                        // Extract only Invalid lines from the report
-                        var invalidLines = report
-                            .Split('\n', StringSplitOptions.RemoveEmptyEntries)
-                            .Where(l => l.Contains("Invalid:", StringComparison.OrdinalIgnoreCase))
-                            .Select(l => l.Replace("Invalid:", "").Trim())
-                            .Where(l => !string.IsNullOrWhiteSpace(l))
-                            .Take(4)
-                            .ToList();
-                        if (invalidLines.Count > 0)
-                        {
-                            var detailedHint = "• " + string.Join("\n• ", invalidLines);
-                            hint = string.IsNullOrWhiteSpace(hint) ? detailedHint : $"{hint}\n\n**Issues:**\n{detailedHint}";
-                        }
-                    }
-                }
-                catch { /* fall through with default hint */ }
+                var failReasons = string.Join(", ", la.Results
+                    .Where(r => !r.Valid)
+                    .Select(r => $"{r.Identifier}"));
+                LogUtil.LogInfo($"TradeModule legality fail: species={pkm.Species} form={pkm.Form} loc={pkm.MetLocation} ot='{pkm.OriginalTrainerName}' shiny={pkm.IsShiny} shinyXor={pkm.ShinyXor} result='{result}' | {failReasons}", "Legality");
             }
-
+            var reason = GetFailureReason(result, spec);
+            var hint = result == "Failed" ? GetLegalizationHint(template, sav, pkm, spec) : null;
             return Task.FromResult(new ProcessedPokemonResult<T>
             {
                 Error = reason,
@@ -1215,83 +1474,130 @@ public static class Helpers<T> where T : PKM, new()
                 ShowdownSet = set
             });
         }
-
-        // ============================================================================
-        // POST-LEGALIZATION FIXUPS
-        // Re-apply held item and nature from the original Showdown set
-        // ALM may strip these for event Pokemon, but they're legal modifications
-        // ============================================================================
-
-        // Shiny fix: ALM sometimes drops shiny when nicknames are present
-        // If user requested shiny but the Pokemon isn't shiny, force it
-        LogUtil.LogInfo($"[Shiny Debug] set.Shiny={set.Shiny}, pk.IsShiny={pk.IsShiny}, Species={(Species)pk.Species}, Nickname='{set.Nickname}'", "Helpers");
-        if (set.Shiny && !pk.IsShiny)
+        if (isPreMadeBypass && !la.Valid)
         {
-            LogUtil.LogInfo($"[Shiny Fix] User requested shiny but ALM generated non-shiny. Forcing shiny for {(Species)pk.Species}", "Helpers");
-            pk.SetIsShiny(true);
-            pk.RefreshChecksum();
+            var bypassReport = la.Report().Replace("\n", " | ");
+            var pkmDetails = $"species={pkm.Species} form={pkm.Form} version={(GameVersion)pkm.Version} metLoc={pkm.MetLocation} metLvl={pkm.MetLevel} lvl={pkm.CurrentLevel} OT={pkm.OriginalTrainerName} shiny={pkm.IsShiny}";
+            LogUtil.LogInfo($"[TradeModule] Pre-made bypass: shipping {pkm.Species} despite local legality flags. Details: {pkmDetails}. Report: {bypassReport}", "Helpers");
+        }
 
-            // Verify it's still legal after setting shiny
-            var shinyCheck = new LegalityAnalysis(pk);
-            if (!shinyCheck.Valid)
+        // ============================================================================
+        // ZA NATURE LEGALITY ENFORCEMENT
+        // ============================================================================
+        // For ZA (PA9) Pokemon, honor the user's requested nature if it passes legality.
+        // If the requested nature is illegal for the encounter (e.g. Zeraora must be Brave),
+        // keep PKHeX's legal nature as the actual Nature and apply the requested nature as
+        // StatNature only (mint effect).
+        //
+        // Example 1: Zeraora (ZA native, forced Brave) + user requests Adamant
+        //            → Nature=Brave, StatNature=Adamant
+        // Example 2: Charmander (SWSH via HOME fallback) + user requests Timid
+        //            → Nature=Timid, StatNature=Timid
+        // Example 3: No nature requested, only StatNature via batch (.StatNature=X)
+        //            → Nature=PKHeX default, StatNature=X (already set by ALM)
+        // Example 4: Nothing requested → ALM picks, no change.
+        // ============================================================================
+        if (pk is PA9)
+        {
+            // Nature.Random (25) means the user did not specify a nature in the set.
+            Nature requestedNature = set.Nature;
+            bool userRequestedNature = requestedNature != Nature.Random;
+
+            // Detect if the user explicitly set a StatNature via .StatNature= batch command.
+            // IMPORTANT: We parse the content string directly rather than comparing pk.StatNature != pk.Nature.
+            // After ALM generation and/or HOME conversion the StatNature byte can differ from Nature as
+            // a format-conversion artifact — checking PKM fields would misidentify that as a user request.
+            Nature? userExplicitStatNature = null;
+            foreach (var line in contentLines)
             {
-                // Try square shiny instead
-                pk.SetShiny(Shiny.AlwaysSquare);
-                pk.RefreshChecksum();
-                var squareCheck = new LegalityAnalysis(pk);
-                if (!squareCheck.Valid)
+                var trimmed = line.Trim();
+                if (trimmed.StartsWith(".StatNature=", StringComparison.OrdinalIgnoreCase))
                 {
-                    // Try star shiny
-                    pk.SetShiny(Shiny.AlwaysStar);
+                    var value = trimmed[".StatNature=".Length..].Trim();
+                    if (Enum.TryParse<Nature>(value, ignoreCase: true, out var parsedSN))
+                    {
+                        userExplicitStatNature = parsedSN;
+                        break;
+                    }
+                }
+            }
+
+            bool hasExplicitStatNature = userExplicitStatNature.HasValue;
+            Nature userStatNature = userExplicitStatNature ?? Nature.Random;
+
+            if (userRequestedNature && requestedNature != pk.Nature)
+            {
+                // The encounter forced a different nature than what the user requested.
+                // Test whether the user's requested nature is legal for this encounter.
+                var clone = (PA9)pk.Clone();
+                clone.Nature = requestedNature;
+                clone.StatNature = hasExplicitStatNature ? userStatNature : requestedNature;
+                clone.RefreshChecksum();
+
+                if (new LegalityAnalysis(clone).Valid)
+                {
+                    // Legal — apply the requested nature to both Nature and StatNature.
+                    pk.Nature = clone.Nature;
+                    pk.StatNature = clone.StatNature;
+                    pk.RefreshChecksum();
+                    LogUtil.LogInfo(
+                        $"{(Species)pk.Species}: Requested nature {requestedNature} is legal — applied.",
+                        "ZANature");
+                }
+                else
+                {
+                    // Requested nature is illegal for this encounter.
+                    // Try minting: keep the forced Nature but apply requested nature as StatNature.
+                    // Verify the mint itself is legal before applying — some encounters (e.g. certain
+                    // HOME-converted WC8 events) restrict StatNature via shiny/nature correlation checks
+                    // and will also reject a mismatched StatNature.
+                    var wantedStatNature = hasExplicitStatNature ? userStatNature : requestedNature;
+                    var cloneMint = (PA9)pk.Clone();
+                    cloneMint.StatNature = wantedStatNature;
+                    cloneMint.RefreshChecksum();
+
+                    if (new LegalityAnalysis(cloneMint).Valid)
+                    {
+                        // Mint is legal — apply it.
+                        pk.StatNature = wantedStatNature;
+                        pk.RefreshChecksum();
+                        LogUtil.LogInfo(
+                            $"{(Species)pk.Species}: Requested nature {requestedNature} is illegal for this encounter. " +
+                            $"Mint applied: Nature={pk.Nature}, StatNature={pk.StatNature}.",
+                            "ZANature");
+                    }
+                    else
+                    {
+                        // Minting is also restricted (e.g. shiny-correlation check ties StatNature to Nature).
+                        // Leave Nature and StatNature exactly as PKHeX produced them — both forced.
+                        LogUtil.LogInfo(
+                            $"{(Species)pk.Species}: Requested nature {requestedNature} is illegal and minting is " +
+                            $"restricted for this encounter. Keeping forced Nature={pk.Nature}, StatNature={pk.StatNature}.",
+                            "ZANature");
+                    }
+                }
+            }
+            else if (userRequestedNature && requestedNature == pk.Nature)
+            {
+                // User's requested nature matches what was generated — mirror to StatNature
+                // unless the user already set a different StatNature via batch command.
+                if (!hasExplicitStatNature)
+                {
+                    pk.StatNature = pk.Nature;
                     pk.RefreshChecksum();
                 }
             }
+            // Else: no nature was requested — leave Nature and StatNature exactly as ALM set them.
         }
+        // ============================================================================
+        // END OF ZA NATURE LEGALITY ENFORCEMENT
+        // ============================================================================
 
-        // Auto-fix invalid items: if user requested an item that ALM rejected,
-        // give them Rare Candy (item ID 50) as a universal fallback
-        // Rare Candy is legal to hold in every game and useful (levels up the Pokemon)
-        if (set.HeldItem > 0 && pk.HeldItem == 0)
-        {
-            pk.HeldItem = set.HeldItem;
-            pk.RefreshChecksum();
-            var itemCheck = new LegalityAnalysis(pk);
-            if (!itemCheck.Valid)
-            {
-                LogUtil.LogInfo($"[AutoFix] Item {set.HeldItem} invalid for {typeof(T).Name}, replacing with Rare Candy", "Helpers");
-                pk.HeldItem = 50; // Rare Candy
-                pk.RefreshChecksum();
-                var fbCheck = new LegalityAnalysis(pk);
-                if (!fbCheck.Valid)
-                {
-                    // Even Rare Candy failed, clear the item
-                    pk.HeldItem = 0;
-                    pk.RefreshChecksum();
-                }
-            }
-        }
-        else if (set.HeldItem > 0 && pk.HeldItem != set.HeldItem)
-        {
-            pk.HeldItem = set.HeldItem;
-            pk.RefreshChecksum();
-        }
-
-        // Nature is handled by ALM during generation — do not override
-
-        // Re-apply EVs if set specified them
-        if (set.EVs.Any(ev => ev > 0))
-        {
-            pk.EV_HP = set.EVs[0];
-            pk.EV_ATK = set.EVs[1];
-            pk.EV_DEF = set.EVs[2];
-            pk.EV_SPE = set.EVs[3];
-            pk.EV_SPA = set.EVs[4];
-            pk.EV_SPD = set.EVs[5];
-            pk.RefreshChecksum();
-        }
-
-        // Final preparation
-        PrepareForTrade(pk, set, finalLanguage);
+        // Final preparation — use effectiveLanguage so the FIXED-OT FALLBACK's language
+        // choice is not overwritten by finalLanguage here.
+        LogUtil.LogInfo($"[LANGUAGE TRACE] Before PrepareForTrade: finalLanguage={finalLanguage}, effectiveLanguage={effectiveLanguage}, pk.Language={pk.Language}", "Helpers");
+        PrepareForTrade(pk, set, effectiveLanguage);
+        LogUtil.LogInfo($"[LANGUAGE TRACE] After PrepareForTrade: pk.Language={pk.Language}", "Helpers");
 
         // Check for spam names
         if (Info.Hub.Config.Trade.TradeConfiguration.EnableSpamCheck)
@@ -1306,62 +1612,19 @@ public static class Helpers<T> where T : PKM, new()
             }
         }
     
-        // ============================================================================
-        // VIVILLON FORM FIX — Force requested form after all legality checks pass
-        // ============================================================================
-        if (pk.Species == 666 && !string.IsNullOrEmpty(set.FormName))
-        {
-            // Resolve form name to form number
-            var vivillonForms = new Dictionary<string, byte>(StringComparer.OrdinalIgnoreCase)
-            {
-                {"Icy Snow", 0}, {"Icy-Snow", 0}, {"IcySnow", 0},
-                {"Polar", 1}, {"Tundra", 2}, {"Continental", 3},
-                {"Garden", 4}, {"Elegant", 5}, {"Meadow", 6}, {"Modern", 7},
-                {"Marine", 8}, {"Archipelago", 9},
-                {"High Plains", 10}, {"High-Plains", 10}, {"HighPlains", 10},
-                {"Sandstorm", 11}, {"River", 12}, {"Monsoon", 13}, {"Savanna", 14},
-                {"Sun", 15}, {"Ocean", 16}, {"Jungle", 17}, {"Fancy", 18},
-                {"Pokeball", 19}, {"Poke Ball", 19}, {"Poke-Ball", 19}
-            };
-
-            var formName = set.FormName?.Trim() ?? "";
-            LogUtil.LogInfo($"[Vivillon] set.FormName='{set.FormName}', trimmed='{formName}', pk.Form={pk.Form}", "Vivillon");
-            if (vivillonForms.TryGetValue(formName, out var targetForm) && targetForm != pk.Form)
-            {
-                // In Z-A only Meadow (6), Garden (4), and Marine (8) are legal
-                if (typeof(T) == typeof(PA9) && targetForm != 4 && targetForm != 6 && targetForm != 8)
-                {
-                    LogUtil.LogInfo($"[Vivillon] Blocked illegal Z-A form {targetForm} ({set.FormName})", "Vivillon");
-                    return Task.FromResult(new ProcessedPokemonResult<T>
-                    {
-                        Error = $"Vivillon-{set.FormName} is **not available** in Legends Z-A. Only **Meadow**, **Marine**, and **Garden** patterns exist in this game.",
-                        ShowdownSet = set
-                    });
-                }
-
-                LogUtil.LogInfo($"[Vivillon] Forcing form from {pk.Form} to {targetForm} ({set.FormName})", "Vivillon");
-                pk.Form = targetForm;
-                pk.ClearNickname();
-                pk.RefreshChecksum();
-            }
-        }
-        // ============================================================================
-
-        // ============================================================================
-        // ALCREMIE FORM FIX — Force requested form after all legality checks pass
-        // ============================================================================
-        if (pk.Species == 869 && set.Form != pk.Form)
-        {
-            LogUtil.LogInfo($"[Alcremie] Forcing form from {pk.Form} to {set.Form} ({set.FormName})", "Alcremie");
-            pk.Form = (byte)set.Form;
-            pk.ClearNickname();
-            pk.RefreshChecksum();
-        }
-        // ============================================================================
-
-        // For SWSH (PK8), GO Pokemon can have AutoOT applied, so don't mark them as non-native
+        // SWSH (PK8) and LGPE (PB7) can legitimately receive GO Pokemon as native:
+        // SwSh via HOME-transfer, LGPE via the original GO Park / Mystery Box mechanic.
+        // Meltan/Melmetal in PB7 are *only* obtainable via GO transfer, so GO-origin PB7
+        // must not be flagged Non-Native or AutoOT/HOME-eligibility gets disabled.
         la = new LegalityAnalysis(pk);
-        var isNonNative = la.EncounterOriginal.Context != pk.Context || (pk.GO && pk is not PK8);
+        var isNonNative = la.EncounterOriginal.Context != pk.Context || (pk.GO && pk is not PK8 && pk is not PB7);
+
+        // Pokemon Legends Z-A has its own native encounters for several Mythicals/Legendaries
+        // that PKHeX may default to a Gen7/Gen8 encounter source for. Override the Non-Native
+        // flag for species confirmed to be Z-A natives (in-game encounters or HOME wondercards
+        // distributed specifically for Z-A).
+        if (isNonNative && pk is PA9 && IsZANativeSpecies(pk.Species))
+            isNonNative = false;
 
         return Task.FromResult(new ProcessedPokemonResult<T>
         {
@@ -1384,8 +1647,6 @@ public static class Helpers<T> where T : PKM, new()
 
     public static void PrepareForTrade(T pk, ShowdownSet set, byte finalLanguage)
     {
-        LogUtil.LogInfo($"[PrepareForTrade] Species={pk.Species}, finalLanguage={finalLanguage}, currentLanguage={pk.Language}", "Helpers");
-
         // Only set EggMetDate for hatched Pokemon, not for unhatched eggs
         if (pk.WasEgg && !pk.IsEgg)
             pk.EggMetDate = pk.MetDate;
@@ -1394,7 +1655,6 @@ public static class Helpers<T> where T : PKM, new()
         // SpanishL (11) isn't supported in some games, fall back to Spanish (7)
         var validatedLanguage = ValidateLanguageForGame(pk, finalLanguage);
         pk.Language = validatedLanguage;
-        LogUtil.LogInfo($"[PrepareForTrade] Set Language to {validatedLanguage}", "Helpers");
 
         // CRITICAL: Asian languages only support 6-character OT names
         // Replace English OT with Asian characters for Asian languages
@@ -1424,7 +1684,13 @@ public static class Helpers<T> where T : PKM, new()
         }
 
         if (!set.Nickname.Equals(pk.Nickname) && string.IsNullOrEmpty(set.Nickname))
-            _ = pk.ClearNickname();
+        {
+            // Use the correct species name for the stored language instead of "" (ClearNickname).
+            // Asian languages require the actual species name in the nickname field; "" fails
+            // PKHeX's "Nickname does not match species name" legality check.
+            pk.Nickname = SpeciesName.GetSpeciesNameGeneration(pk.Species, pk.Language, pk.Format);
+            pk.IsNicknamed = false;
+        }
 
         pk.ResetPartyStats();
     }
@@ -1466,6 +1732,302 @@ public static class Helpers<T> where T : PKM, new()
         };
     }
 
+    /// <summary>
+    /// Returns the legal SwSh encounter parameters for species that can only be obtained in SwSh
+    /// and must be transferred to SV via HOME. Returns null if the species isn't SwSh-only.
+    /// Tuple: (level, shiny, form?) where form is required only when the shiny wondercard uses
+    /// a specific form (e.g. Zacian/Zamazenta shiny wondercard is Hero form 0, not Crowned).
+    /// </summary>
+    public static (int level, bool shiny, byte? form)? GetSwShLegalEncounter(ushort species, bool userWantsShiny)
+    {
+        return species switch
+        {
+            // Eternatus: story lv60 non-shiny, wondercard 1643 lv100 shiny
+            890 => userWantsShiny ? (100, true, (byte?)null) : (60, false, (byte?)null),
+            // Zacian: story lv70 Hero form non-shiny, wondercard 1644 lv100 Hero shiny
+            888 => userWantsShiny ? (100, true, (byte?)0) : (70, false, (byte?)0),
+            // Zamazenta: story lv70 Hero non-shiny, wondercard 1645 lv100 Hero shiny
+            889 => userWantsShiny ? (100, true, (byte?)0) : (70, false, (byte?)0),
+            // Kubfu: IoA gift lv10, non-shiny only (no legal shiny)
+            891 => (10, false, (byte?)null),
+            // Urshifu: IoA evolution from Kubfu, lv80 typically
+            892 => (80, false, (byte?)null),
+            // Regirock / Regice / Registeel: Crown Tundra Dynamax Adventures lv70, shiny allowed
+            377 => (70, userWantsShiny, (byte?)null),
+            378 => (70, userWantsShiny, (byte?)null),
+            379 => (70, userWantsShiny, (byte?)null),
+            // Regigigas: Crown Shrine static lv70, shiny only via Pokemon GO transfer
+            // pre-made file (Crown Shrine itself is shiny-locked). Pass userWantsShiny so
+            // ALM tries SwSh first; if shiny requested, ALM fails and pre-made fallback kicks in.
+            486 => (70, userWantsShiny, (byte?)null),
+            // Regieleki / Regidrago: Crown Tundra lv70, non-shiny only
+            894 => (70, false, (byte?)null),
+            895 => (70, false, (byte?)null),
+            // Glastrier / Spectrier: Crown Tundra lv70, non-shiny only
+            896 => (70, false, (byte?)null),
+            897 => (70, false, (byte?)null),
+            // Calyrex: Crown Tundra lv80, non-shiny only
+            898 => (80, false, (byte?)null),
+            // Keldeo: Gen 5 mythical, non-shiny in original (shiny via GO+HOME pre-made fallback)
+            647 => (50, userWantsShiny, (byte?)null),
+            // Meloetta: Released shiny in SV via the Mythical Distribution event - ALM handles it natively
+            // 648 => (50, userWantsShiny, (byte?)null),
+            _ => null,
+        };
+    }
+
+    /// <summary>
+    /// Mythicals/Legendaries that have legal shiny variants only via Pokemon GO transfers.
+    /// These are shiny-locked in their original games but can be obtained shiny in GO via
+    /// Special Research, Field Research, or events, then transferred via HOME.
+    /// </summary>
+    /// <summary>
+    /// Pokemon that have a native encounter or HOME-event distribution in Legends Z-A.
+    /// Used to override the Non-Native flag when a Z-A bot trades these species.
+    /// PKHeX may default to an older-generation encounter for some of these, but they're
+    /// legitimately obtainable in Z-A and shouldn't show "Non-Native & Has Home Tracker."
+    /// </summary>
+    public static bool IsZANativeSpecies(ushort species)
+    {
+        return species switch
+        {
+            802 => true, // Marshadow — Z-A native
+            721 => true, // Volcanion — Z-A native (Sec patch HOME WC)
+            647 => true, // Keldeo — Z-A native (HOME event)
+            648 => true, // Meloetta — Z-A native (HOME event)
+            _ => false,
+        };
+    }
+
+    /// <summary>
+    /// Pokemon that are shiny-locked when traded on a Z-A bot. These species may have
+    /// legitimate shinies in OTHER games (GO transfers, past events, BDSP eggs) but
+    /// cannot be legally traded into Z-A as shiny. Reject the request before ALM
+    /// picks a non-Z-A encounter source.
+    /// Exceptions: Volcanion (#721), Keldeo (#647), Meloetta (#648) have confirmed
+    /// Z-A HOME-event shiny distributions and ARE allowed.
+    /// </summary>
+    public static bool IsZALockedShiny(ushort species)
+    {
+        return species switch
+        {
+            // Allowed via HOME transfer (announced 2026-05-06):
+            // 150 Mewtwo, 382 Kyogre, 383 Groudon, 384 Rayquaza, 485 Heatran, 491 Darkrai,
+            // 716 Xerneas, 717 Yveltal, 718 Zygarde, 647 Keldeo, 648 Meloetta, 721 Volcanion
+            151  => true, // Mew
+            251  => true, // Celebi
+            385  => true, // Jirachi
+            386  => true, // Deoxys
+            489  => true, // Phione
+            490  => true, // Manaphy
+            492  => true, // Shaymin
+            493  => true, // Arceus (always shiny-locked)
+            494  => true, // Victini
+            649  => true, // Genesect
+            719  => true, // Diancie
+            720  => true, // Hoopa (already globally blocked, defensive)
+            801  => true, // Magearna
+            802  => true, // Marshadow
+            // 807 Zeraora unblocked 2026-05-19 — real Z-A shiny .pa9 in HOME-Ready-Files (HOME Distribution event file)
+            808  => true, // Meltan
+            809  => true, // Melmetal
+            893  => true, // Zarude (Dada Zarude was form-only, not shiny)
+            // 999 Gimmighoul — shiny-unlockable in Z-A
+            1025 => true, // Pecharunt
+            // Floette form 5 (Eternal) is shiny-locked. Form check happens elsewhere
+            // since this method only sees species ID. The form-aware reject for #670-eternal
+            // is handled in the form-correction path.
+            _ => false,
+        };
+    }
+
+    /// <summary>
+    /// Returns a human-readable reason when the requested species+form is NOT
+    /// natively available in Pokémon Legends: Z-A. ALM produces a PA9 from an
+    /// older-gen encounter for the requested form, which the receiving Z-A game
+    /// rejects at the Link Trade screen. Returns null when the form is allowed.
+    /// Expand as additional form-locked species are reported.
+    /// </summary>
+    public static string? GetZAFormBlockReason(ushort species, byte form)
+    {
+        return (species, form) switch
+        {
+            // Zygarde: ALL forms fail Z-A's in-game Link Trade check on this bot.
+            // Showdown parses every form variant (Zygarde, Zygarde-50%, Zygarde-10%,
+            // Zygarde-Complete) into either Aura Break (form 0/1) or Complete (form 4),
+            // none of which match Z-A's native Power Construct encounter signature.
+            // Empirically confirmed 2026-05-12: form 0 (Zygarde-50%) and form 1
+            // (Zygarde-10%) both fail in-game with "problem with your trade partner's
+            // Pokémon" despite shipping via legality bypass. Block until a real
+            // Z-A Power-Construct PA9 source file is added to HOME-Ready-Files.
+            // Zygarde forms:
+            //   form 0 ("Zygarde", "Zygarde-50%") → 0718 - Zygarde - BCB361FA085E.pa9 (50% PC) ✓
+            //   form 2 ("Zygarde-10%") → 0718-02 - Zygarde - 3DDA584950A1.pa9 (10% PC) ✓
+            //   form 4 ("Zygarde-Complete", 100%) → BLOCKED, Z-A doesn't support Complete file format
+            (718, 4) => "Pokémon Legends: Z-A doesn't support Zygarde Complete (100% Forme) files. Request `Zygarde` (50% Forme) or `Zygarde-10%` instead.",
+            _ => null,
+        };
+    }
+
+    /// <summary>
+    /// Z-A native legendaries whose Z-A encounter signature (Power Construct ability,
+    /// specific Wild Zone / Hyperspace met locations) ALM can't reliably reproduce.
+    /// When the user requests one of these on a PA9 (Z-A) bot, we route through the
+    /// pre-made fallback in HOME-Ready-Files so a real Z-A-extracted .pa9 file is
+    /// shipped instead of ALM's broken output. Add species here once a corresponding
+    /// .pa9 source file is dropped into HOME-Ready-Files.
+    /// </summary>
+    /// <summary>
+    /// Species blocked from shiny requests on Z-A (PA9) bots because the resulting
+    /// file fails HOME deposit ("Non-Native, cannot enter HOME"). Empirically:
+    /// SwSh Max Lair routing produces a valid in-game file but the HOME tracker we
+    /// generate isn't one HOME's database recognizes, so HOME refuses the deposit.
+    /// Hyperspace force-shiny route was tried earlier and rejected by the user as
+    /// "wrong location." Unblock individually by sourcing a real Z-A-extracted shiny
+    /// .pa9 file with a real HOME tracker (like the Zygarde 50% / 10% fix).
+    /// </summary>
+    public static bool IsHomeRejectingShinyZALegendary(ushort species)
+    {
+        return species switch
+        {
+            150 => true, // Mewtwo
+            // 382 Kyogre  unblocked — real Max-Lair shiny .pa9 (FA3A744CC0AE) in HOME-Ready-Files
+            // 383 Groudon unblocked — real Max-Lair shiny .pa9 (CBDA99488EDE) in HOME-Ready-Files
+            // 384 Rayquaza unblocked 2026-05-19 — real Z-A shiny .pa9 in HOME-Ready-Files
+            485 => true, // Heatran
+            491 => true, // Darkrai
+            716 => true, // Xerneas
+            717 => true, // Yveltal
+            _   => false,
+        };
+    }
+
+    /// <summary>
+    /// Species that, on a Z-A bot, must be routed through SwSh Max Lair (Dynamax Adventure)
+    /// when SHINY is requested. Z-A native encounters at Hyperspace locations are shiny-
+    /// locked, ALM falls back to BDSP/PLA with met locations like "Crystal Cavern" that
+    /// Z-A's game refuses ("Non-Native, cannot enter HOME"). SwSh Max Lair is shiny-
+    /// eligible, and the PK8 → PA9 HOME conversion produces a file with Max Lair met
+    /// location AND a valid HOME tracker — accepted by Z-A.
+    /// </summary>
+    public static bool IsCrownTundraDAShinyForZA(ushort species)
+    {
+        return species switch
+        {
+            150 => true, // Mewtwo
+            382 => true, // Kyogre
+            383 => true, // Groudon
+            384 => true, // Rayquaza
+            485 => true, // Heatran
+            491 => true, // Darkrai
+            716 => true, // Xerneas
+            717 => true, // Yveltal
+            _   => false,
+        };
+    }
+
+    public static bool IsZALegendaryWithPreMade(ushort species)
+    {
+        return species switch
+        {
+            150 => true, // Mewtwo — Lysandre Labs encounter
+            382 => true, // Kyogre — Hyperspace Primordial Sea
+            383 => true, // Groudon — Hyperspace Desolate Land
+            384 => true, // Rayquaza — Hyperspace Sky Pillar
+            485 => true, // Heatran — Hyperspace Infernal Arena
+            491 => true, // Darkrai — Hyperspace Newmoon Nightmare
+            670 => true, // Floette — Eternal Flower (form 5)
+            716 => true, // Xerneas — Wild Zone 11
+            717 => true, // Yveltal — Rouge Sector 2
+            718 => true, // Zygarde — Wild Zone 20 (Power Construct forms 2/3)
+            719 => true, // Diancie — Magenta Sector 8
+            720 => true, // Hoopa — Hyperspace Lumiose (ALM can't generate this encounter; use real-save pre-made)
+            807 => true, // Zeraora — Hyperspace Lumiose (shiny .pa9 in HOME-Ready-Files from HOME Distribution)
+            _   => false,
+        };
+    }
+
+    /// <summary>
+    /// Species that have NEVER been distributed shiny in any game — main series,
+    /// Pokemon GO, HOME events, past wondercards, anywhere. Shiny requests for
+    /// these are rejected at the trade entry point so the pre-made fallback never
+    /// gets a chance to force-flip a non-shiny event file's PID into an illegal
+    /// "shiny" copy.
+    /// </summary>
+    public static bool IsTrulyShinyLocked(ushort species)
+    {
+        return species switch
+        {
+            489  => true, // Phione  — Manaphy egg hatch, no shiny distribution
+            490  => true, // Manaphy — PMD2 / Ranger events all non-shiny
+            // 493 Arceus removed — BDSP Ramanas Park (Azure Flute) IS shiny-eligible.
+            // Still shiny-locked in SwSh / SV / Z-A — handled by per-game checks
+            // (IsZALockedShiny for Z-A; SwSh/SV blocks via IsSwSh*/IsSV* if added).
+            494  => true, // Victini — Liberty Ticket + every later event shiny-locked
+            720  => true, // Hoopa   — every main series + GO encounter shiny-locked
+            801  => true, // Magearna — event-only, shiny never released
+            802  => true, // Marshadow — event-only, shiny never released
+            893  => true, // Zarude   — Dada Zarude was form-only, base Zarude shiny-locked
+            1025 => true, // Pecharunt — SV Mochi Mayhem event, shiny-locked
+            _    => false,
+        };
+    }
+
+    /// <summary>
+    /// Species whose only legitimate shiny path is Pokemon GO → HOME transfer with
+    /// a real HOME-issued tracker. The bot's pre-made files for these are tool-
+    /// generated GO simulations, not extracted from real account transfers, so
+    /// Pokemon HOME's server-side database lookup rejects them on deposit (10015).
+    /// Used to gate shiny requests in SV (PK9) and BDSP (PB8) where the failure
+    /// has been empirically confirmed. Expand as additional species are reported.
+    /// </summary>
+    public static bool IsHomeRejectingShinyMythical(ushort species)
+    {
+        return species switch
+        {
+            // 386 Deoxys removed — user has legit Emerald Birth Island event shiny PB8
+            // in HOME-Ready-Files. HOME *may* still reject on deposit (10015 known), but
+            // the Switch-side trade succeeds and the user explicitly wants this trade.
+            _   => false,
+        };
+    }
+
+    public static bool IsGoShinyMythical(ushort species)
+    {
+        return species switch
+        {
+            // Mythicals (GO + main game shiny-locked)
+            151 => true, // Mew
+            251 => true, // Celebi
+            385 => true, // Jirachi
+            386 => true, // Deoxys
+            487 => true, // Giratina — restored 2026-05-25: ALM can't generate SV-legal shiny;
+                         // pre-made shiny PK9/PK8/PB8/PA8 files exist in HOME-Ready-Files
+                         // (Max Lair SwSh shinies HOME-transferred). isGoMyth=true ⇒ forces
+                         // fallbackCheck=true which uses those pre-made files.
+            489 => true, // Phione
+            490 => true, // Manaphy
+            492 => true, // Shaymin
+            494 => true, // Victini
+            648 => true, // Meloetta
+            649 => true, // Genesect
+            719 => true, // Diancie
+            720 => true, // Hoopa
+            721 => true, // Volcanion
+            801 => true, // Magearna (event-only, ALM exhausts encounters in newer PKHeX)
+            802 => true, // Marshadow
+            807 => true, // Zeraora
+            808 => true, // Meltan
+            809 => true, // Melmetal
+            893 => true, // Zarude
+            // Legendary birds (Galarian forms can't be generated by ALM in PK9)
+            144 => true, // Articuno (Galar form)
+            145 => true, // Zapdos (Galar form)
+            146 => true, // Moltres (Galar form)
+            _ => false,
+        };
+    }
+
     public static string GetLegalizationHint(IBattleTemplate template, ITrainerInfo sav, PKM pkm, string speciesName)
     {
         var hint = AutoLegalityWrapper.GetLegalizationHint(template, sav, pkm);
@@ -1474,74 +2036,6 @@ public static class Helpers<T> where T : PKM, new()
             hint = $"{speciesName} **cannot** be shiny. Please try again.";
         }
         return hint;
-    }
-
-    // Generate a 100% legal shiny PKM by iterating PKHeX's encounter database.
-    // Used for shiny-locked species (Mew, Jirachi) where ALM's default path fails.
-    private static PKM? TryGenerateLegalShiny<TP>(ushort species, ITrainerInfo sav, ShowdownSet set, out string result)
-        where TP : PKM, new()
-    {
-        LogUtil.LogInfo($"[LegalShiny] Searching for legit shiny encounter for species={species}, T={typeof(TP).Name}", "Helpers");
-        var blank = new TP { Species = species };
-
-        try
-        {
-            // Iterate encounter data for this species, try to make each one shiny and legal
-            var encounters = EncounterMovesetGenerator.GenerateEncounters(blank, System.ReadOnlyMemory<ushort>.Empty);
-            var criteria = EncounterCriteria.Unrestricted with { Shiny = Shiny.Always };
-            int tried = 0;
-            foreach (var enc in encounters)
-            {
-                tried++;
-                if (enc.Shiny == Shiny.Never) continue;
-                PKM? candidate;
-                try { candidate = enc.ConvertToPKM(sav, criteria); }
-                catch { continue; }
-                if (candidate is not TP typed) continue;
-                try
-                {
-                    if (!typed.IsShiny) typed.SetShiny();
-                    typed.RefreshChecksum();
-                    var la = new LegalityAnalysis(typed);
-                    if (!la.Valid) continue;
-
-                    // Apply user customizations that don't break legality
-                    if (set.Nature != Nature.Random)
-                    {
-                        typed.Nature = set.Nature;
-                        typed.StatNature = set.Nature;
-                    }
-                    if (set.EVs != null && set.EVs.Any(e => e > 0))
-                    {
-                        typed.EV_HP = set.EVs[0]; typed.EV_ATK = set.EVs[1]; typed.EV_DEF = set.EVs[2];
-                        typed.EV_SPE = set.EVs[3]; typed.EV_SPA = set.EVs[4]; typed.EV_SPD = set.EVs[5];
-                    }
-                    if (set.HeldItem > 0) typed.HeldItem = set.HeldItem;
-                    typed.CurrentLevel = 100;
-                    typed.HealPP();
-                    typed.RefreshChecksum();
-                    var laFinal = new LegalityAnalysis(typed);
-                    if (laFinal.Valid)
-                    {
-                        result = "Regenerated";
-                        LogUtil.LogInfo($"[LegalShiny] Found legal shiny after {tried} candidate(s)", "Helpers");
-                        return typed;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    LogUtil.LogInfo($"[LegalShiny] Candidate threw: {ex.Message}", "Helpers");
-                }
-            }
-            LogUtil.LogError($"[LegalShiny] No legal shiny encounter found after trying {tried} candidates for species {species}", "Helpers");
-        }
-        catch (Exception ex)
-        {
-            LogUtil.LogError($"[LegalShiny] Exception during encounter generation: {ex.Message}", "Helpers");
-        }
-
-        result = "Failed";
-        return null;
     }
 
     public static async Task SendTradeErrorEmbedAsync(SocketCommandContext context, ProcessedPokemonResult<T> result)
@@ -1779,6 +2273,63 @@ public static class Helpers<T> where T : PKM, new()
         return randomPictocodes;
     }
 
+    // ============================================================================
+    // PA9 CROSS-GAME HOME FALLBACK HELPERS
+    // ============================================================================
+
+    /// <summary>
+    /// Tries every PKM format HOME supports (newest first) and returns the first result
+    /// that converts to a legally valid PA9. Used when Z-A generation fails for any reason.
+    /// </summary>
+    private static PA9? TryGetAsHomePa9(IBattleTemplate template, string speciesName)
+    {
+        // Lazy delegates — GetTrainerInfo is called inside the try-catch so a
+        // failure for one game type is silently skipped without aborting the loop.
+        (Func<ITrainerInfo> GetTrainer, string Name)[] sources =
+        [
+            (() => AutoLegalityWrapper.GetTrainerInfo<PK9>(),  "SV"),
+            (() => AutoLegalityWrapper.GetTrainerInfo<PK8>(),  "SWSH"),
+            (() => AutoLegalityWrapper.GetTrainerInfo<PA8>(),  "PLA"),
+            (() => AutoLegalityWrapper.GetTrainerInfo<PB8>(),  "BDSP"),
+            (() => AutoLegalityWrapper.GetTrainerInfo<PK7>(),  "USUM/SM"),
+            (() => AutoLegalityWrapper.GetTrainerInfo<PB7>(),  "LGPE"),
+            (() => AutoLegalityWrapper.GetTrainerInfo<PK6>(),  "ORAS/XY"),
+            (() => AutoLegalityWrapper.GetTrainerInfo<PK5>(),  "BW/B2W2"),
+            (() => AutoLegalityWrapper.GetTrainerInfo<PK4>(),  "DPPt/HGSS"),
+            (() => AutoLegalityWrapper.GetTrainerInfo<PK3>(),  "RSE/FRLG"),
+        ];
+
+        foreach (var (getTrainer, name) in sources)
+        {
+            try
+            {
+                var trainerInfo = getTrainer(); // invoked here so any throw is caught below
+                var generated = trainerInfo.GetLegal(template, out _);
+                if (generated == null)
+                    continue;
+
+                var converted = EntityConverter.ConvertToType(generated, typeof(PA9), out _);
+                if (converted is not PA9 pa9)
+                    continue;
+
+                if (!new LegalityAnalysis(pa9).Valid)
+                    continue;
+
+                LogUtil.LogInfo(
+                    $"{speciesName}: HOME fallback succeeded from {name} (Version={pa9.Version})",
+                    "PA9HomeFallback");
+                return pa9;
+            }
+            catch { }
+        }
+
+        return null;
+    }
+
+    // ============================================================================
+    // END OF PA9 SHINY FALLBACK HELPERS
+    // ============================================================================
+
     public static async Task<T?> ProcessTradeAttachmentAsync(SocketCommandContext context)
     {
         var attachment = context.Message.Attachments.FirstOrDefault();
@@ -1794,6 +2345,14 @@ public static class Helpers<T> where T : PKM, new()
         if (pk == null)
         {
             _ = await context.Channel.SendMessageAsync("Attachment provided is not compatible with this module!").ConfigureAwait(false);
+            return null;
+        }
+
+        // Block shiny Hoopa file uploads — Hoopa is shiny-locked in every main series game.
+        // Mirrors the showdown-set check in ProcessShowdownSetAsync at line ~179.
+        if (pk.Species == (ushort)Species.Hoopa && pk.IsShiny)
+        {
+            _ = await context.Channel.SendMessageAsync("**Hoopa cannot be Shiny.** Hoopa is shiny-locked in every main series Pokémon game. There is no legal way to obtain a shiny Hoopa.").ConfigureAwait(false);
             return null;
         }
 
@@ -1862,13 +2421,70 @@ public static class Helpers<T> where T : PKM, new()
 
         var la = new LegalityAnalysis(pk!);
 
-        // Skip legality check for Vivillon/Alcremie — form is forced after generation.
-        // Also skip Mew/Jirachi shiny and Melmetal/Meltan in PK8 — GO-origin manual builds.
-        bool isGoBuiltPk8 = (pk is PK8 || pk is PB8) && (
-            pk.Species == 808 || pk.Species == 809 ||
-            pk.Species == 251 || pk.Species == 385 || pk.Species == 386 ||
-            ((pk.Species == 151) && pk.IsShiny));
-        if (!la.Valid && pk!.Species != 666 && pk!.Species != 869 && !isGoBuiltPk8)
+        // Auto-fix nickname-only issues on attachments by clearing nickname and re-validating
+        if (!la.Valid && la.Results.Any(r => r.Identifier is CheckIdentifier.Nickname))
+        {
+            var clone = (T)pk!.Clone();
+            _ = clone.ClearNickname();
+            var laNick = new LegalityAnalysis(clone);
+            if (laNick.Valid)
+            {
+                pk = clone;
+                la = laNick;
+            }
+        }
+
+        // HOME-simulated wondercard files (newer than our PKHeX library) trip these checks:
+        // "Unable to match to a Mystery Gift in the database" + Souvenir Ribbon + Fateful Encounter.
+        // The files themselves are legal — our local PKHeX is just outdated. Bypass these specific
+        // failures so trusted pre-made files ship through.
+        var laReport = la.Report();
+        bool isHomeWondercardOldPkhexIssue = !la.Valid && laReport.Contains(
+            "Unable to match to a Mystery Gift", StringComparison.OrdinalIgnoreCase);
+        // Pre-made GO-shiny mythicals carry a Met Date from when the GO event was live.
+        // Once the distribution window closes, PKHeX flags the date as stale even though the
+        // Pokemon itself is legitimate. Bypass for trusted pre-made files.
+        bool isStaleMetDateIssue = !la.Valid && laReport.Contains(
+            "Met Date is outside of distribution window", StringComparison.OrdinalIgnoreCase);
+
+        // Mythical legendary bypass (second gate): covers Z-A native catches AND
+        // HOME-transferred mythicals across all formats (PA9 / PK9 SV / PK8 SwSh).
+        // PKHeX may flag Encounter/Ability/Move/Misc/Height/Weight mismatches due to
+        // new-game-data quirks; bypass for known mythical/legendary species.
+        bool isMythicalMetLocation2 = pk is (PA9 or PK9 or PK8) &&
+            ((pk is PA9 && pk.MetLocation is > 0 and <= 350) || pk.MetLocation >= 30000);
+        bool isZANativeLegendaryIssue = !la.Valid && isMythicalMetLocation2 &&
+            pk.Species is 150 or 151 or 251 or 380 or 381 or 382 or 383 or 384 or 385 or 386
+                or 485 or 489 or 490 or 491 or 492 or 493 or 494
+                or 638 or 639 or 640 or 647 or 648 or 649
+                or 670 or 716 or 717 or 718 or 719 or 720 or 721
+                or 801 or 802 or 807 or 808 or 809 &&
+            (laReport.Contains("Unable to match an encounter from origin game", StringComparison.OrdinalIgnoreCase)
+             || laReport.Contains("Ability mismatch for encounter", StringComparison.OrdinalIgnoreCase)
+             || laReport.Contains("Height should be", StringComparison.OrdinalIgnoreCase)
+             || laReport.Contains("Weight should be", StringComparison.OrdinalIgnoreCase)
+             || laReport.Contains("Scale should be", StringComparison.OrdinalIgnoreCase)
+             || laReport.Contains("Misc", StringComparison.OrdinalIgnoreCase));
+
+        // BDSP legendary: met location was overridden post-ALM to the canonical spot.
+        // PKHeX flags an encounter mismatch; bypass since the override is intentional.
+        bool isBDSPLakeTrioIssue = !la.Valid && pk is PB8 &&
+            pk.Species is 480 or 481 or 482 or 485 or 487 or 488 or 491 or 492;
+
+        // BDSP Gen-3-origin (Emerald Birth Island Deoxys, FRLG event mons) — when the
+        // bot flips the PID to satisfy shiny↔non-shiny, the seed-locked
+        // PID/EC/IVs/Nature correlation breaks and PKHeX flags it. The file is real,
+        // the BDSP game itself accepts it (its validator is looser than PKHeX's), and
+        // the user wanted this trade. Bypass scoped to PB8 + flipped-PID symptom set.
+        bool isBDSPPidFlipIssue = !la.Valid && pk is PB8 &&
+            (laReport.Contains("PID+ correlation does not match", StringComparison.OrdinalIgnoreCase)
+             || laReport.Contains("PID should be equal to EC", StringComparison.OrdinalIgnoreCase)
+             || laReport.Contains("PID-Nature mismatch", StringComparison.OrdinalIgnoreCase)
+             || laReport.Contains("Unable to match to a Mystery Gift", StringComparison.OrdinalIgnoreCase)
+             || laReport.Contains("Invalid Ribbons: Classic", StringComparison.OrdinalIgnoreCase)
+             || laReport.Contains("Fateful Encounter should", StringComparison.OrdinalIgnoreCase));
+
+        if (!la.Valid && !isHomeWondercardOldPkhexIssue && !isStaleMetDateIssue && !isZANativeLegendaryIssue && !isBDSPLakeTrioIssue && !isBDSPPidFlipIssue)
         {
             string responseMessage;
             if (pk?.IsEgg == true)
@@ -1886,6 +2502,14 @@ public static class Helpers<T> where T : PKM, new()
             await reply.DeleteAsync().ConfigureAwait(false);
             return;
         }
+        if (isHomeWondercardOldPkhexIssue)
+        {
+            LogUtil.LogInfo($"[Helpers] AddTradeToQueueAsync: bypassing legality for HOME wondercard species {pk?.Species} (PKHeX too old to validate)", "Helpers");
+        }
+        if (isStaleMetDateIssue)
+        {
+            LogUtil.LogInfo($"[Helpers] AddTradeToQueueAsync: bypassing legality for species {pk?.Species} (pre-made file Met Date past distribution window)", "Helpers");
+        }
 
         if (Info.Hub.Config.Legality.DisallowNonNatives && isNonNative)
         {
@@ -1901,24 +2525,11 @@ public static class Helpers<T> where T : PKM, new()
             return;
         }
 
-        // Handle past gen file requests
-        if (!la.Valid)
-        {
-            if (la.Results.Any(m => m.Identifier is CheckIdentifier.Memory))
-            {
-                var clone = (T)pk!.Clone();
-                clone.HandlingTrainerName = pk.OriginalTrainerName;
-                clone.HandlingTrainerGender = pk.OriginalTrainerGender;
-                if (clone is PK8 or PA8 or PB8 or PK9)
-                    ((dynamic)clone).HandlingTrainerLanguage = (byte)pk.Language;
-                clone.CurrentHandler = 1;
-                la = new LegalityAnalysis(clone);
-                if (la.Valid) pk = clone;
-            }
-        }
+        // Past gen file fix is now handled in ProcessShowdownSetAsync before this point
 
         await QueueHelper<T>.AddToQueueAsync(context, code, trainerName, sig, pk!, PokeRoutineType.LinkTrade,
             tradeType, usr, isBatchTrade, batchTradeNumber, totalBatchTrades, isHiddenTrade, isMysteryEgg,
             lgcode: lgcode, ignoreAutoOT: ignoreAutoOT, setEdited: setEdited, isNonNative: isNonNative).ConfigureAwait(false);
     }
+
 }

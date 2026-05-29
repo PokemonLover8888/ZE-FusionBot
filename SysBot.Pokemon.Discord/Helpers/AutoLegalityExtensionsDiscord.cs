@@ -5,7 +5,6 @@ using PKHeX.Core;
 using PKHeX.Core.AutoMod;
 using SysBot.Base;
 using SysBot.Pokemon.Discord.Helpers;
-using SysBot.Pokemon.Discord.Helpers.TradeModule;
 using SysBot.Pokemon.Helpers;
 using System;
 using System.Collections.Generic;
@@ -17,7 +16,7 @@ namespace SysBot.Pokemon.Discord;
 
 public static class AutoLegalityExtensionsDiscord
 {
-    public static async Task ReplyWithLegalizedSetAsync(this ISocketMessageChannel channel, ITrainerInfo sav, ShowdownSet set, Dictionary<string, bool>? userHTPreferences = null)
+    public static async Task ReplyWithLegalizedSetAsync(this ISocketMessageChannel channel, ITrainerInfo sav, ShowdownSet set, Dictionary<string, bool>? userHTPreferences = null, byte requestedLanguage = 0)
     {
         if (set.Species <= 0)
         {
@@ -59,34 +58,28 @@ public static class AutoLegalityExtensionsDiscord
                 return;
             }
 
-            // -----------------------------
-            // Enforce requested IVs, Nature, and Shiny (Z-A only, non-eggs)
-            // -----------------------------
-            // IVEnforcer and NatureEnforcer are only for Z-A (PA9) Pokemon
-            // For other games, the normal legalization process already handles nature/shiny
-            if (!isEggRequest && pkm is PA9 && template != null)
-            {
-                if (set.IVs != null && set.IVs.Count() == 6)
-                {
-                    IVEnforcer.ApplyRequestedIVsAndForceNature(
-                        pkm,
-                        set.IVs.ToArray(),
-                        set.Nature,
-                        set.Shiny,
-                        sav,
-                        template,
-                        userHTPreferences
-                    );
-                }
-                else
-                {
-                    // Even if no IVs requested, enforce nature/shiny only for Z-A
-                    NatureEnforcer.ForceNature(pkm, set.Nature, set.Shiny);
-                }
-            }
+            // Apply requested language now, before legality checks, so the analysis
+            // sees the correct language. ALM only applies RegenTemplate language when
+            // OT/TID/SID are also present; we must set it explicitly otherwise.
+            if (requestedLanguage != 0)
+                ApplyLanguageToSet(pkm, set, requestedLanguage);
 
             var la = new LegalityAnalysis(pkm);
             var spec = GameInfo.Strings.Species[set.Species];
+
+            // If Z-A generation failed and we have a PA9, try every HOME-supported game
+            // before giving up — mirrors the same fallback used by the trade path.
+            if (!la.Valid && !isEggRequest && pkm is PA9 && template != null)
+            {
+                var fallback = TryGetAsHomePa9(template, spec);
+                if (fallback != null)
+                {
+                    pkm = fallback;
+                    if (requestedLanguage != 0)
+                        ApplyLanguageToSet(pkm, set, requestedLanguage);
+                    la = new LegalityAnalysis(pkm);
+                }
+            }
 
             if (!la.Valid)
             {
@@ -123,9 +116,10 @@ public static class AutoLegalityExtensionsDiscord
         content = BatchCommandNormalizer.NormalizeBatchCommands(content);
         var userHTPreferences = ParseHyperTrainingCommandsPublic(content);
         content = ReusableActions.StripCodeBlock(content);
+        byte requestedLanguage = ExtractAndStripLanguage(ref content);
         var set = new ShowdownSet(content);
         var sav = AutoLegalityWrapper.GetTrainerInfo(gen);
-        return channel.ReplyWithLegalizedSetAsync(sav, set, userHTPreferences);
+        return channel.ReplyWithLegalizedSetAsync(sav, set, userHTPreferences, requestedLanguage);
     }
 
     public static Task ReplyWithLegalizedSetAsync<T>(this ISocketMessageChannel channel, string content) where T : PKM, new()
@@ -133,9 +127,20 @@ public static class AutoLegalityExtensionsDiscord
         content = BatchCommandNormalizer.NormalizeBatchCommands(content);
         var userHTPreferences = ParseHyperTrainingCommandsPublic(content);
         content = ReusableActions.StripCodeBlock(content);
+        byte requestedLanguage = ExtractAndStripLanguage(ref content);
         var set = new ShowdownSet(content);
         var sav = AutoLegalityWrapper.GetTrainerInfo<T>();
-        return channel.ReplyWithLegalizedSetAsync(sav, set, userHTPreferences);
+        return channel.ReplyWithLegalizedSetAsync(sav, set, userHTPreferences, requestedLanguage);
+    }
+
+    private static byte ExtractAndStripLanguage(ref string content)
+    {
+        byte lang = LanguageHelper.GetFinalLanguage(content, null, 0, _ => 0);
+        if (lang == 0)
+            return 0;
+        var lines = content.Split('\n').Where(l => !l.TrimStart().StartsWith("Language:", StringComparison.OrdinalIgnoreCase));
+        content = string.Join('\n', lines);
+        return lang;
     }
 
     public static async Task ReplyWithLegalizedSetAsync(this ISocketMessageChannel channel, IAttachment att)
@@ -211,5 +216,87 @@ public static class AutoLegalityExtensionsDiscord
         }
 
         return htFlags.Count > 0 ? htFlags : null;
+    }
+
+    /// Sets language on a generated PKM, including the Asian OT truncation that
+    /// PKHeX requires when the configured OT exceeds 6 characters (the limit
+    /// PKHeX enforces for Japanese/Korean/Chinese Pokémon).
+    private static void ApplyLanguageToSet(PKM pkm, ShowdownSet set, byte language)
+    {
+        pkm.Language = (int)language;
+
+        bool isAsian = language is
+            (byte)LanguageID.Japanese or
+            (byte)LanguageID.Korean or
+            (byte)LanguageID.ChineseS or
+            (byte)LanguageID.ChineseT;
+
+        if (isAsian && pkm.OriginalTrainerName.Length > 6)
+        {
+            const string shortOT = "王犬米";
+            pkm.OriginalTrainerName = shortOT;
+            // Simple property assignment leaves stale trash bytes from the previous
+            // longer OT, which PKHeX's Trainer check flags as invalid. Clear them
+            // explicitly (same approach used in the trade path's PrepareForTrade).
+            var trashBuf = new byte[pkm.TrashCharCountTrainer * 2];
+            int trashLen = pkm.SetString(trashBuf, shortOT.AsSpan(), pkm.TrashCharCountTrainer, StringConverterOption.ClearZero);
+            pkm.OriginalTrainerTrash.Clear();
+            trashBuf.AsSpan(0, trashLen).CopyTo(pkm.OriginalTrainerTrash);
+        }
+
+        if (string.IsNullOrEmpty(set.Nickname))
+        {
+            pkm.Nickname = SpeciesName.GetSpeciesNameGeneration(pkm.Species, pkm.Language, pkm.Format);
+            pkm.IsNicknamed = false;
+        }
+        pkm.RefreshChecksum();
+    }
+
+    /// <summary>
+    /// Mirrors the HOME fallback in Helpers&lt;T&gt;.TryGetAsHomePa9.
+    /// Tries every PKM format HOME supports (newest first) and returns the first
+    /// result that converts to a legally valid PA9.
+    /// </summary>
+    private static PA9? TryGetAsHomePa9(IBattleTemplate template, string speciesName)
+    {
+        (Func<ITrainerInfo> GetTrainer, string Name)[] sources =
+        [
+            (() => AutoLegalityWrapper.GetTrainerInfo<PK9>(),  "SV"),
+            (() => AutoLegalityWrapper.GetTrainerInfo<PK8>(),  "SWSH"),
+            (() => AutoLegalityWrapper.GetTrainerInfo<PA8>(),  "PLA"),
+            (() => AutoLegalityWrapper.GetTrainerInfo<PB8>(),  "BDSP"),
+            (() => AutoLegalityWrapper.GetTrainerInfo<PK7>(),  "USUM/SM"),
+            (() => AutoLegalityWrapper.GetTrainerInfo<PB7>(),  "LGPE"),
+            (() => AutoLegalityWrapper.GetTrainerInfo<PK6>(),  "ORAS/XY"),
+            (() => AutoLegalityWrapper.GetTrainerInfo<PK5>(),  "BW/B2W2"),
+            (() => AutoLegalityWrapper.GetTrainerInfo<PK4>(),  "DPPt/HGSS"),
+            (() => AutoLegalityWrapper.GetTrainerInfo<PK3>(),  "RSE/FRLG"),
+        ];
+
+        foreach (var (getTrainer, name) in sources)
+        {
+            try
+            {
+                var trainerInfo = getTrainer();
+                var generated = trainerInfo.GetLegal(template, out _);
+                if (generated == null)
+                    continue;
+
+                var converted = EntityConverter.ConvertToType(generated, typeof(PA9), out _);
+                if (converted is not PA9 pa9)
+                    continue;
+
+                if (!new LegalityAnalysis(pa9).Valid)
+                    continue;
+
+                LogUtil.LogInfo(
+                    $"{speciesName}: HOME fallback succeeded from {name} (Version={pa9.Version})",
+                    "PA9HomeFallback");
+                return pa9;
+            }
+            catch { }
+        }
+
+        return null;
     }
 }

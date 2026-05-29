@@ -14,6 +14,55 @@ namespace SysBot.Pokemon.Discord;
 /// <typeparam name="T">Type of Pokémon data structure.</typeparam>
 public static class DetailsExtractor<T> where T : PKM, new()
 {
+    private static readonly Dictionary<string, string> BallEmojis = new(StringComparer.OrdinalIgnoreCase)
+    {
+        { "pokéball", "<:poke:1499918417547886634>" },
+        { "pokeball", "<:poke:1499918417547886634>" },
+        { "poké ball", "<:poke:1499918417547886634>" },
+        { "poke ball", "<:poke:1499918417547886634>" },
+        { "greatball", "<:great:1499918348065624490>" },
+        { "ultraball", "<:ultra:1499918400560824490>" },
+        { "masterball", "<:master:1499918365454746192>" },
+        { "premierball", "<:premier:1499918382538166433>" },
+        { "cherishball", "<:cherish:1499918313214709892>" },
+        { "dreamball", "<:dream:1499918329572491285>" },
+        { "healball", "<:heal:1499918120440168549>" },
+        { "netball", "<:net:1499937184415744062>" },
+        { "nestball", "<:nest:1499918135808908870>" },
+        { "repeatball", "<:repeat:1499918178451718234>" },
+        { "timerball", "<:timer:1499918199381164147>" },
+        { "luxuryball", "<:luxury:1450503685082976338>" },
+        { "quickball", "<:quick:1499918097459576973>" },
+        { "diveball", "<:dive:1499917968711094493>" },
+        { "fastball", "<:fast:1499917988076191744>" },
+        { "friendball", "<:friend:1499918024495468714>" },
+        { "heavyball", "<:heavy:1499918044997095577>" },
+        { "levelball", "<:level:1499918061518717029>" },
+        { "loveball", "<:love:1499918077876240524>" },
+        { "lureball", "<:lure:1499917894031638528>" },
+        { "moonball", "<:moon:1499917910930493631>" },
+        { "parkball", "<:park:1499917925166092450>" },
+        { "safariball", "<:safari:1499917942152888411>" },
+        { "sportball", "<:sport:1499937219383918727>" },
+        { "beastball", "<:beast:1499917863295778866>" },
+        { "duskball", "<:dusk:1499917878978281553>" },
+    };
+
+    private static string FormatBall(string ballName)
+    {
+        if (string.IsNullOrEmpty(ballName)) return ballName;
+        // Try several lookups: as-is, lowercased, and lowercased with spaces removed
+        var lower = ballName.ToLowerInvariant();
+        var stripped = lower.Replace(" ", "").Replace("é", "e");
+        if (BallEmojis.TryGetValue(ballName, out var emoji)
+            || BallEmojis.TryGetValue(lower, out emoji)
+            || BallEmojis.TryGetValue(stripped, out emoji))
+        {
+            return $"{emoji} {ballName}";
+        }
+        return ballName;
+    }
+
     /// <summary>
     /// Adds additional text to the embed as configured in settings.
     /// </summary>
@@ -44,6 +93,7 @@ public static class DetailsExtractor<T> where T : PKM, new()
             (SysCord<T>.Runner.Config.Trade.TradeEmbedSettings.ShowBall ? $"**Ball:** {embedData.Ball}\n" : "") +
             (SysCord<T>.Runner.Config.Trade.TradeEmbedSettings.ShowMetLevel ? $"**Met Level:** {embedData.MetLevel}\n" : "") +
             (SysCord<T>.Runner.Config.Trade.TradeEmbedSettings.ShowMetDate ? $"**Met Date:** {embedData.MetDate}\n" : "") +
+            (!string.IsNullOrEmpty(embedData.MetLocation) ? $"**Met Location:** {embedData.MetLocation}\n" : "") +
             (SysCord<T>.Runner.Config.Trade.TradeEmbedSettings.ShowAbility ? $"**Ability:** {embedData.Ability}\n" : "") +
             (SysCord<T>.Runner.Config.Trade.TradeEmbedSettings.ShowNature ? $"**{embedData.Nature}** Nature\n" : "") +
             // Show Stat Nature for PLZA only, and only if it differs from regular Nature
@@ -186,6 +236,22 @@ public static class DetailsExtractor<T> where T : PKM, new()
         }.Where(s => !string.IsNullOrEmpty(s)));
         embedData.MetDate = pk.MetDate.ToString();
         embedData.MetLevel = pk.MetLevel;
+
+        // Extract Met Location name
+        try
+        {
+            string metLocName = GameInfo.Strings.GetLocationName(
+                isEggLocation: false,
+                location: pk.MetLocation,
+                format: pk.Format,
+                generation: pk.Generation,
+                version: pk.Version);
+            embedData.MetLocation = string.IsNullOrWhiteSpace(metLocName) ? null : metLocName;
+        }
+        catch
+        {
+            embedData.MetLocation = null;
+        }
         embedData.MovesDisplay = string.Join("\n", embedData.Moves);
         embedData.PokemonDisplayName = pk.IsNicknamed ? pk.Nickname : embedData.SpeciesName;
 
@@ -320,10 +386,33 @@ public static class DetailsExtractor<T> where T : PKM, new()
         List<int> movePPs = new() { pk.Move1_PP, pk.Move2_PP, pk.Move3_PP, pk.Move4_PP };
         var moveNames = new List<string>();
 
-        // Prepare type emojis dictionary
+        // Prepare type emojis dictionary — use config emojis, fall back to Unicode
         var typeEmojis = SysCord<T>.Runner.Config.Trade.TradeEmbedSettings.CustomTypeEmojis
             .Where(e => !string.IsNullOrEmpty(e.EmojiCode))
             .ToDictionary(e => (PKHeX.Core.MoveType)e.MoveType, e => $"{e.EmojiCode}");
+
+        // Unicode fallback emojis for types without custom emojis configured
+        var fallbackTypeEmojis = new Dictionary<PKHeX.Core.MoveType, string>
+        {
+            { PKHeX.Core.MoveType.Normal, "\ud83d\udfe4" },     // 🟤
+            { PKHeX.Core.MoveType.Fighting, "\ud83e\udd4a" },   // 🥊
+            { PKHeX.Core.MoveType.Flying, "\ud83d\udca8" },     // 💨
+            { PKHeX.Core.MoveType.Poison, "\u2620\ufe0f" },     // ☠️
+            { PKHeX.Core.MoveType.Ground, "\ud83c\udfdc\ufe0f" }, // 🏜️
+            { PKHeX.Core.MoveType.Rock, "\ud83e\udea8" },       // 🪨
+            { PKHeX.Core.MoveType.Bug, "\ud83d\udc1b" },        // 🐛
+            { PKHeX.Core.MoveType.Ghost, "\ud83d\udc7b" },      // 👻
+            { PKHeX.Core.MoveType.Steel, "\u2699\ufe0f" },      // ⚙️
+            { PKHeX.Core.MoveType.Fire, "\ud83d\udd25" },       // 🔥
+            { PKHeX.Core.MoveType.Water, "\ud83d\udca7" },      // 💧
+            { PKHeX.Core.MoveType.Grass, "\ud83c\udf3f" },      // 🌿
+            { PKHeX.Core.MoveType.Electric, "\u26a1" },          // ⚡
+            { PKHeX.Core.MoveType.Psychic, "\ud83d\udd2e" },    // 🔮
+            { PKHeX.Core.MoveType.Ice, "\u2744\ufe0f" },        // ❄️
+            { PKHeX.Core.MoveType.Dragon, "\ud83d\udc09" },     // 🐉
+            { PKHeX.Core.MoveType.Dark, "\ud83c\udf11" },       // 🌑
+            { PKHeX.Core.MoveType.Fairy, "\ud83e\uddda" },       // 🧚
+        };
 
         // PLUS MOVE emoji
         string plusEmoji = string.Empty;
@@ -346,10 +435,14 @@ public static class DetailsExtractor<T> where T : PKM, new()
                 ? $"*{moveName}*" // no PP
                 : $"*{moveName}* ({movePPs[i]} PP)"; // normal games include PP
 
-            // Add type emoji
-            if (SysCord<T>.Runner.Config.Trade.TradeEmbedSettings.MoveTypeEmojis && typeEmojis.TryGetValue(moveType, out var moveEmoji))
+            // Add type emoji — use config emoji if available, otherwise Unicode fallback
+            if (typeEmojis.TryGetValue(moveType, out var moveEmoji))
             {
                 formattedMove = $"{moveEmoji} {formattedMove}";
+            }
+            else if (fallbackTypeEmojis.TryGetValue(moveType, out var fallbackEmoji))
+            {
+                formattedMove = $"{fallbackEmoji} {formattedMove}";
             }
 
             // PLUS MOVE LOGIC (PLZA only)
@@ -380,6 +473,21 @@ public static class DetailsExtractor<T> where T : PKM, new()
         return (scaleText, scaleNumber);
     }
 
+    private static bool IsLegendaryOrMythical(ushort species) => species switch
+    {
+        // Legendaries
+        144 or 145 or 146 or 150 or 243 or 244 or 245 or 249 or 250 or 377 or 378 or 379
+        or 380 or 381 or 382 or 383 or 384 or 480 or 481 or 482 or 483 or 484 or 485 or 486
+        or 487 or 488 or 638 or 639 or 640 or 641 or 642 or 643 or 644 or 645 or 646 or 716
+        or 717 or 718 or 772 or 773 or 785 or 786 or 787 or 788 or 791 or 792 or 800 or 888
+        or 889 or 890 or 894 or 895 or 896 or 897 or 898 or 905 or 1001 or 1002 or 1003
+        or 1004 or 1007 or 1008 or 1014 or 1015 or 1016 or 1017 or 1024 => true,
+        // Mythicals
+        151 or 251 or 385 or 386 or 489 or 490 or 491 or 492 or 493 or 494 or 647 or 648
+        or 649 or 719 or 720 or 721 or 801 or 802 or 807 or 808 or 809 or 893 or 1025 => true,
+        _ => false,
+    };
+
     private static string GetSpecialSymbols(T pk)
     {
         string alphaMarkSymbol = string.Empty;
@@ -399,7 +507,9 @@ public static class DetailsExtractor<T> where T : PKM, new()
         string genderSymbol = GameInfo.GenderSymbolASCII[pk.Gender];
         string maleEmojiString = SysCord<T>.Runner.Config.Trade.TradeEmbedSettings.MaleEmoji.EmojiString;
         string femaleEmojiString = SysCord<T>.Runner.Config.Trade.TradeEmbedSettings.FemaleEmoji.EmojiString;
-        string displayGender = genderSymbol switch
+        // Hide gender emoji on legendaries and mythicals
+        bool isLegendaryOrMythical = IsLegendaryOrMythical(pk.Species);
+        string displayGender = (isLegendaryOrMythical || string.IsNullOrEmpty(genderSymbol)) ? "" : genderSymbol switch
         {
             "M" => !string.IsNullOrEmpty(maleEmojiString) ? maleEmojiString : "(M) ",
             "F" => !string.IsNullOrEmpty(femaleEmojiString) ? femaleEmojiString : "(F) ",
@@ -486,6 +596,9 @@ public class EmbedData
 
     /// <summary>Met level.</summary>
     public byte MetLevel { get; set; }
+
+    /// <summary>Met location name.</summary>
+    public string? MetLocation { get; set; }
 
     /// <summary>List of move names.</summary>
     public List<string>? Moves { get; set; }

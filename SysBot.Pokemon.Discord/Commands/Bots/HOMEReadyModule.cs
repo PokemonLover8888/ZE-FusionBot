@@ -38,6 +38,7 @@ namespace SysBot.Pokemon.Discord.Modules
         [Command("homeready")]
         [Alias("hr")]
         [Summary("Displays instructions on how to use the HOME-Ready module.")]
+        [RequireQueueRole(nameof(DiscordManager.RolesClone))]
         private async Task HomeReadyInstructionsAsync()
         {
             if (string.IsNullOrWhiteSpace(HOMEFolder))
@@ -98,7 +99,7 @@ namespace SysBot.Pokemon.Discord.Modules
         [Command("homereadyrequest")]
         [Alias("hrr")]
         [Summary("Downloads a HOME-ready PKM and queues it for trade.")]
-        [RequireQueueRole(nameof(DiscordManager.RolesTrade))]
+        [RequireQueueRole(nameof(DiscordManager.RolesClone))]
         private async Task HOMEReadyRequestAsync(int index)
         {
             if (string.IsNullOrWhiteSpace(HOMEFolder))
@@ -207,6 +208,7 @@ namespace SysBot.Pokemon.Discord.Modules
         [Command("homereadylist")]
         [Alias("hrl")]
         [Summary("Lists available HOME-Ready files with filtering + pagination.")]
+        [RequireQueueRole(nameof(DiscordManager.RolesClone))]
         private async Task HOMEListAsync([Remainder] string args = "")
         {
             if (string.IsNullOrWhiteSpace(HOMEFolder))
@@ -318,6 +320,7 @@ namespace SysBot.Pokemon.Discord.Modules
         [Command("homereadyview")]
         [Alias("hrv")]
         [Summary("Views a HOME-ready PKM in Showdown format before downloading.")]
+        [RequireQueueRole(nameof(DiscordManager.RolesClone))]
         private async Task HOMEReadyViewAsync(int index)
         {
             if (string.IsNullOrWhiteSpace(HOMEFolder))
@@ -446,6 +449,7 @@ namespace SysBot.Pokemon.Discord.Modules
         [Command("homereadydownload")]
         [Alias("hrd")]
         [Summary("Downloads a HOME-ready PKM file by its number from the list.")]
+        [RequireQueueRole(nameof(DiscordManager.RolesClone))]
         private async Task HOMEReadyDownloadAsync(int index)
         {
             if (string.IsNullOrWhiteSpace(HOMEFolder))

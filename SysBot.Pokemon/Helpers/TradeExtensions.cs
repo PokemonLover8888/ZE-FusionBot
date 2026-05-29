@@ -16,7 +16,8 @@ public abstract class TradeExtensions<T> where T : PKM, new()
     private static readonly string[] AllowedDomains =
 {
     "freemons.org",
-    "genpkm.com"
+    "genpkm.com",
+    "creator.pkm-universe.com"
 };
 
     private static readonly ushort[] ExplicitlyBlockedHeldItems =
@@ -395,24 +396,41 @@ public abstract class TradeExtensions<T> where T : PKM, new()
 
     public static PKM TrashBytes(PKM pkm, LegalityAnalysis? la = null)
     {
-        // Simply update MetDate for non-GO Pokemon
-        // The caller will handle validation
         var result = (T)pkm.Clone();
+
+        // Update MetDate for non-GO Pokemon
         if (result.Version is not GameVersion.GO)
             result.MetDate = DateOnly.FromDateTime(DateTime.Now);
 
-        // If a LegalityAnalysis was provided and is valid, attempt nickname cleanup
+        // Clear trash bytes in nickname/OT by setting and resetting
         if (la?.Valid == true)
         {
             var withNickname = (T)result.Clone();
             withNickname.IsNicknamed = true;
             withNickname.Nickname = "UwU";
             withNickname.SetDefaultNickname(la);
-
-            // Only return the nickname-cleaned version if we know it's valid
-            // The caller will validate anyway, so we don't need to check here
             result = withNickname;
         }
+
+        // Set relearn moves — this fixes "relearn moves missing" errors
+        try
+        {
+            var relearnLa = la ?? new LegalityAnalysis(result);
+            result.SetRelearnMoves(relearnLa);
+            result.RefreshChecksum();
+        }
+        catch { }
+
+        // Clear trash bytes by re-setting nickname and OT
+        try
+        {
+            var nick = result.Nickname;
+            result.Nickname = nick;
+            var ot = result.OriginalTrainerName;
+            result.OriginalTrainerName = ot;
+            result.RefreshChecksum();
+        }
+        catch { }
 
         return result;
     }
@@ -560,22 +578,22 @@ public abstract class TradeExtensions<T> where T : PKM, new()
         if (held <= 0)
             return false;
 
-        // HARD BLOCK: Primal Orbs (Mega Dimension DLC)
-        if (ExplicitlyBlockedHeldItems.Contains((ushort)held))
-            return true;
+        // HARD BLOCK: Primal Orbs (Mega Dimension DLC) - always blocked
         if (ExplicitlyBlockedHeldItems.Contains((ushort)held))
         {
             Base.LogUtil.LogInfo($"Blocked Primal Orb trade attempt (Item ID: {held})", "BlockItem");
             return true;
         }
 
-        // Check if item is not allowed to be held in this game context
-        if (!ItemRestrictions.IsHeldItemAllowed(held, pkm.Context))
-            return true;
-
-        // Check if item cannot be traded
-        if (TradeRestrictions.IsUntradableHeld(pkm.Context, held))
-            return true;
+        // Only enforce strict item restrictions for PA9 (Legends Z-A)
+        // Other games (SV, SWSH, BDSP, PLA, LGPE) accept all standard items
+        if (pkm is PA9)
+        {
+            if (!ItemRestrictions.IsHeldItemAllowed(held, pkm.Context))
+                return true;
+            if (TradeRestrictions.IsUntradableHeld(pkm.Context, held))
+                return true;
+        }
 
         return false;
     }

@@ -16,6 +16,10 @@ public class DiscordManager(DiscordSettings Config)
 
     public ulong Owner { get; internal set; }
 
+    public RemoteControlAccessList RolesBatch => Config.RoleCanBatch;
+
+    public RemoteControlAccessList RolesBlockedBatch => Config.RoleBlockedBatch;
+
     public RemoteControlAccessList RolesClone => Config.RoleCanClone;
 
     public RemoteControlAccessList RolesDump => Config.RoleCanDump;
@@ -63,6 +67,7 @@ public class DiscordManager(DiscordSettings Config)
 
     private RemoteControlAccessList GetSet(string type) => type switch
     {
+        nameof(RolesBatch) => RolesBatch,
         nameof(RolesClone) => RolesClone,
         nameof(RolesTrade) => RolesTrade,
         nameof(RolesSeed) => RolesSeed,

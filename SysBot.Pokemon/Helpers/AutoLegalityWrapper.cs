@@ -35,6 +35,10 @@ public static class AutoLegalityWrapper
     // The list of encounter types in the priority we prefer if no order is specified.
     private static readonly EncounterTypeGroup[] EncounterPriority = [EncounterTypeGroup.Egg, EncounterTypeGroup.Slot, EncounterTypeGroup.Static, EncounterTypeGroup.Mystery, EncounterTypeGroup.Trade];
 
+    // Used by TryGetAsWildOrEgg to temporarily narrow the encounter search.
+    private static readonly SemaphoreSlim s_wildRetryLock = new SemaphoreSlim(1, 1);
+    private static readonly List<EncounterTypeGroup> s_wildAndEggPriority = [EncounterTypeGroup.Slot, EncounterTypeGroup.Egg];
+
     private static void InitializeSettings(LegalitySettings cfg)
     {
         // Disable expensive PID+ validation for PLZA shiny Pokemon
@@ -123,6 +127,14 @@ public static class AutoLegalityWrapper
         return fallback;
     }
 
+    public static SimpleTrainerInfo GetFallbackTrainer()
+    {
+        if (ConfiguredSettings == null)
+            throw new InvalidOperationException("AutoLegalityWrapper has not been initialized. Call EnsureInitialized first.");
+
+        return GetDefaultTrainer(ConfiguredSettings);
+    }
+
     private static void RegisterIfNoneExist(SimpleTrainerInfo fallback, byte generation, GameVersion version)
     {
         fallback = new SimpleTrainerInfo(version)
@@ -174,6 +186,129 @@ public static class AutoLegalityWrapper
         },
         _ => false,
     };
+
+    /// <summary>
+    /// Tries to generate the Pokémon using only wild (Slot) and Egg encounters,
+    /// bypassing fixed-OT static/gift/trade encounters. Returns null if no valid
+    /// non-fixed-OT encounter exists for this species, or if another thread is
+    /// already performing a retry (avoids lock contention stalling the queue).
+    /// </summary>
+    public static PKM? TryGetAsWildOrEgg(ITrainerInfo sav, IBattleTemplate template)
+    {
+        if (!s_wildRetryLock.Wait(200))
+            return null;
+
+        var originalPriority = EncounterMovesetGenerator.PriorityList;
+        try
+        {
+            EncounterMovesetGenerator.PriorityList = s_wildAndEggPriority;
+            var pk = sav.GetLegal(template, out _);
+            if (pk == null)
+                return null;
+
+            var la = new LegalityAnalysis(pk);
+            if (!la.Valid || IsFixedOT(la.EncounterOriginal, pk))
+                return null;
+
+            return pk;
+        }
+        finally
+        {
+            EncounterMovesetGenerator.PriorityList = originalPriority;
+            s_wildRetryLock.Release();
+        }
+    }
+
+    // Z-A native legendaries that PKHeX's encounter database currently has Z-A entries for.
+    // For these, force NativeOnly priority during PA9 generation so ALM doesn't fall back
+    // to SwSh Max Lair encounters (legal but produces wrong met location for a Z-A trade).
+    private static readonly HashSet<ushort> ZANativeLegendaries = new()
+    {
+        150, 380, 381, 382, 383, 384, 485, 491, 638, 639, 640, 647, 648, 649,
+        670, 716, 717, 718, 719, 720, 721, 801, 802, 807, 808, 809
+    };
+
+    private static readonly object _almPriorityLock = new();
+
+    /// <summary>
+    /// Wrapper around <see cref="EntityConverterExtensions.GetLegal"/> that forces
+    /// <c>NativeOnly</c> encounter priority for Z-A native legendaries when generating PA9.
+    /// Without this, ALM falls back to SwSh Max Lair encounters which produce a legal
+    /// PKM with the wrong met location (and SW/SH version stamp) for a Z-A trade.
+    /// Thread-safe: acquires a lock around the global priority toggle.
+    /// </summary>
+    public static PKM GetLegalForTrade(this ITrainerInfo sav, IBattleTemplate template, out string res)
+    {
+        // For Z-A, BDSP, and PLA trades, force PriorityOrder so ALM picks the native game's
+        // encounter first instead of falling back to a different game's encounter that
+        // converts with the wrong met location (e.g. SwSh Max Lair → PA8, or Movie 15 → PA9).
+        bool isZA = sav.Version == GameVersion.ZA;
+        bool isBDSP = sav.Version is GameVersion.BDSP or GameVersion.BD or GameVersion.SP;
+        bool isPLA = sav.Version == GameVersion.PLA;
+
+        if (!isZA && !isBDSP && !isPLA)
+            return sav.GetLegal(template, out res);
+
+        lock (_almPriorityLock)
+        {
+            var previousType = APILegality.GameVersionPriority;
+            var previousOrder = APILegality.PriorityOrder;
+            APILegality.GameVersionPriority = GameVersionPriorityType.PriorityOrder;
+
+            if (isZA)
+            {
+                APILegality.PriorityOrder = new List<GameVersion>
+                {
+                    GameVersion.ZA,
+                    GameVersion.SL, GameVersion.VL, GameVersion.SV,
+                    GameVersion.SW, GameVersion.SH, GameVersion.SWSH,
+                    GameVersion.PLA, GameVersion.BD, GameVersion.SP, GameVersion.BDSP,
+                    GameVersion.GP, GameVersion.GE, GameVersion.GG
+                };
+            }
+            else if (isBDSP)
+            {
+                // BDSP first so Sinnoh legendaries (Mesprit, Azelf, Uxie, Dialga, Palkia,
+                // Giratina, Heatran, Cresselia, Manaphy, Phione, etc.) come from native
+                // Lake/Spear Pillar/etc. locations instead of SwSh Max Lair via conversion.
+                APILegality.PriorityOrder = new List<GameVersion>
+                {
+                    GameVersion.BD, GameVersion.SP, GameVersion.BDSP,
+                    GameVersion.PLA,
+                    GameVersion.SW, GameVersion.SH, GameVersion.SWSH,
+                    GameVersion.SL, GameVersion.VL, GameVersion.SV,
+                    GameVersion.ZA,
+                    GameVersion.GP, GameVersion.GE, GameVersion.GG
+                };
+            }
+            else // PLA
+            {
+                // PLA first so Hisui-native legendaries/mythicals come from PLA encounters
+                // (Mass Outbreak, Daybreak content, Distortion). Falls back to BDSP for
+                // Sinnoh natives that aren't in PLA, then SV/SwSh as last resort to avoid
+                // SwSh Max Lair leaking through for cross-region species like Landorus.
+                APILegality.PriorityOrder = new List<GameVersion>
+                {
+                    GameVersion.PLA,
+                    GameVersion.BD, GameVersion.SP, GameVersion.BDSP,
+                    GameVersion.SL, GameVersion.VL, GameVersion.SV,
+                    GameVersion.SW, GameVersion.SH, GameVersion.SWSH,
+                    GameVersion.ZA,
+                    GameVersion.GP, GameVersion.GE, GameVersion.GG
+                };
+            }
+
+            try
+            {
+                return sav.GetLegal(template, out res);
+            }
+            finally
+            {
+                APILegality.GameVersionPriority = previousType;
+                APILegality.PriorityOrder = previousOrder;
+            }
+        }
+    }
 
     public static ITrainerInfo GetTrainerInfo<T>() where T : PKM, new()
     {
@@ -295,24 +430,30 @@ public static class AutoLegalityWrapper
                 if (set.Shiny && !pk.IsShiny)
                 {
                     // Pokemon should be shiny but isn't - force it to be shiny
-                    // Use Square shiny (XOR = 0) for SWSH/SV, regular shiny for others
-                    var desiredXor = pk is PK8 or PK9 ? 0 : 1;
+                    // Dynamax Adventures (Max Lair, MetLocation=244) REQUIRE Star shiny (XOR=1).
+                    // This applies to native PK8 (SWSH save) AND to PK9 that originated in
+                    // SWSH and were transferred to SV via HOME (Version=SW/SH, MetLocation=244).
+                    bool isMaxLairOrigin = pk switch
+                    {
+                        PK8 { MetLocation: 244 } => true,
+                        PK9 { MetLocation: 244 } when pk.Version == GameVersion.SW || pk.Version == GameVersion.SH => true,
+                        _ => false,
+                    };
+                    var desiredXor = isMaxLairOrigin
+                        ? 1  // Max Lair: always Star shiny (Square is invalid for Dynamax Adventures)
+                        : pk is PK8 or PK9 ? 0 : 1;
                     pk.PID = (uint)((pk.TID16 ^ pk.SID16 ^ (pk.PID & 0xFFFF) ^ desiredXor) << 16) | (pk.PID & 0xFFFF);
                     pk.RefreshChecksum();
                 }
 
-                // Force 6IV for Max Lair Pokemon (SWSH)
-                // Max Lair Pokemon are legally allowed to have 6IV (guaranteed 3+, others random)
-                const int MaxLairLocationID = 244;
-                if (pk is PK8 pk8 && pk8.MetLocation == MaxLairLocationID)
+                // Fix Square shiny at Max Lair: PKHeX requires Star shiny (ShinyXor 1-15) for MetLocation=244.
+                // Covers native PK8 (SWSH save) and HOME-transferred PK9 with SWSH Max Lair origin.
+                bool isMaxLairSquareShiny = pk.IsShiny && pk.ShinyXor == 0 && pk.MetLocation == 244 &&
+                    (pk is PK8 || (pk is PK9 && (pk.Version == GameVersion.SW || pk.Version == GameVersion.SH)));
+                if (isMaxLairSquareShiny)
                 {
-                    pk8.IV_HP = 31;
-                    pk8.IV_ATK = 31;
-                    pk8.IV_DEF = 31;
-                    pk8.IV_SPA = 31;
-                    pk8.IV_SPD = 31;
-                    pk8.IV_SPE = 31;
-                    pk8.RefreshChecksum();
+                    pk.PID ^= 0x10000u; // Flip bit 16: ShinyXor 0 → 1 (Square → Star)
+                    pk.RefreshChecksum();
                 }
             }
 

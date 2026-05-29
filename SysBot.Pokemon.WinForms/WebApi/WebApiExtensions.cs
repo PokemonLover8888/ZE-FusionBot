@@ -1010,6 +1010,14 @@ public static class WebApiExtensions
         {
             for (int port = startPort; port < startPort + 100; port++)
             {
+                // Skip the configured-HTTP-port range (8090-8104) so TCP fallback
+                // can't poach another bot's HTTP server port. Without this skip, when
+                // a bot's TCP fallback is searching for a free port, it can grab a
+                // port that another bot will later try to use as its HTTP server,
+                // causing one bot to silently lose its HTTP binding.
+                if (port >= 8090 && port <= 8104)
+                    continue;
+
                 // Check if port is reserved by another instance
                 if (_portReservations.ContainsKey(port))
                     continue;

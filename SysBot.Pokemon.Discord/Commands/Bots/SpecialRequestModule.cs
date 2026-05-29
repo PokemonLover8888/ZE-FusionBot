@@ -385,6 +385,31 @@ namespace SysBot.Pokemon.Discord
         {
             lgcode ??= Helpers<T>.GenerateRandomPictocodes(3);
             var la = new LegalityAnalysis(pk);
+
+            // Recovery pass: when an attachment fails legality with handler/memory
+            // issues (common for $dump'd files where the bot was the last handler
+            // before export), clone the pkm and align Handler/Memory fields with the
+            // OT, then re-check. If the file is otherwise legal, this saves the trade.
+            // Common errors handled: "Current handler cannot be the OT", "Memory" identifier.
+            bool isHandlerOrMemoryIssue = !la.Valid && la.Results.Any(m =>
+                m.Identifier is CheckIdentifier.Memory or CheckIdentifier.Trainer);
+            if (isHandlerOrMemoryIssue)
+            {
+                var clone = (T)pk.Clone();
+                clone.HandlingTrainerName = pk.OriginalTrainerName;
+                clone.HandlingTrainerGender = pk.OriginalTrainerGender;
+                if (clone is PK8 or PA8 or PB8 or PK9 or PA9)
+                    ((dynamic)clone).HandlingTrainerLanguage = (byte)pk.Language;
+                clone.CurrentHandler = 1;
+                clone.RefreshChecksum();
+                var laFix = new LegalityAnalysis(clone);
+                if (laFix.Valid)
+                {
+                    pk = clone;
+                    la = laFix;
+                }
+            }
+
             if (!la.Valid)
             {
                 string responseMessage = pk.IsEgg ? "Invalid Showdown Set for this Egg. Please review your information and try again." :
@@ -393,22 +418,6 @@ namespace SysBot.Pokemon.Discord
                 await Task.Delay(6000);
                 await reply.DeleteAsync().ConfigureAwait(false);
                 return;
-            }
-            if (!la.Valid && la.Results.Any(m => m.Identifier is CheckIdentifier.Memory))
-            {
-                var clone = (T)pk.Clone();
-
-                clone.HandlingTrainerName = pk.OriginalTrainerName;
-                clone.HandlingTrainerGender = pk.OriginalTrainerGender;
-
-                if (clone is PK8 or PA8 or PB8 or PK9)
-                    ((dynamic)clone).HandlingTrainerLanguage = (byte)pk.Language;
-
-                clone.CurrentHandler = 1;
-
-                la = new LegalityAnalysis(clone);
-
-                if (la.Valid) pk = clone;
             }
 
             await QueueHelper<T>.AddToQueueAsync(Context, code, trainerName, sig, pk, PokeRoutineType.LinkTrade, tradeType, usr, isBatchTrade, batchTradeNumber, totalBatchTrades, isHiddenTrade, isMysteryEgg, lgcode: lgcode, ignoreAutoOT).ConfigureAwait(false);

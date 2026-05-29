@@ -143,6 +143,12 @@ public class DiscordSettings
     [Category(Operation), Description("When enabled, user command messages will be deleted along with bot responses. Disable to keep user commands visible."), DisplayName("Delete Bot Commands")]
     public bool DeleteUserCommandMessages { get; set; } = true;
 
+    [Category(Roles), Description("Users with this role are allowed to use batch trades. If empty, nobody can batch trade (must add a role)."), DisplayName("Role can Batch Trade")]
+    public RemoteControlAccessList RoleCanBatch { get; set; } = new() { AllowIfEmpty = false };
+
+    [Category(Roles), Description("Users with this role are BLOCKED from batch trading, even if they have the batch trade role."), DisplayName("Role Blocked from Batch Trade")]
+    public RemoteControlAccessList RoleBlockedBatch { get; set; } = new() { AllowIfEmpty = false };
+
     [Category(Roles), Description("Users with this role are allowed to enter the Clone queue."), DisplayName("Role can Clone")]
     public RemoteControlAccessList RoleCanClone { get; set; } = new() { AllowIfEmpty = true };
 

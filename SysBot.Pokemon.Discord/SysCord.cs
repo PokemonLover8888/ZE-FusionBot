@@ -181,7 +181,25 @@ public sealed partial class SysCord<T> where T : PKM, new()
         _client.Disconnected += (exception) =>
         {
             LogUtil.LogText($"Discord connection lost. Reason: {exception?.Message ?? "Unknown"}");
+            BotHealthReporter.ReportDiscord(connected: false);
             Task.Run(() => ReconnectAsync());
+            return Task.CompletedTask;
+        };
+
+        // Mark Discord healthy on Ready and Connected; track latency.
+        _client.Connected += () =>
+        {
+            BotHealthReporter.ReportDiscord(connected: true, latencyMs: _client.Latency);
+            return Task.CompletedTask;
+        };
+        _client.Ready += () =>
+        {
+            BotHealthReporter.ReportDiscord(connected: true, latencyMs: _client.Latency);
+            return Task.CompletedTask;
+        };
+        _client.LatencyUpdated += (_, current) =>
+        {
+            BotHealthReporter.ReportDiscord(connected: true, latencyMs: current);
             return Task.CompletedTask;
         };
     }
@@ -299,16 +317,20 @@ public sealed partial class SysCord<T> where T : PKM, new()
         }
 
         var botName = string.IsNullOrEmpty(SysCordSettings.HubConfig.BotName) ? "SysBot" : SysCordSettings.HubConfig.BotName;
-        var fullStatusMessage = $"**Status**: {botName} is {status}!";
-        var thumbnailUrl = status == "Online"
-            ? "https://raw.githubusercontent.com/Secludedly/ZE-FusionBot-Sprite-Images/main/botgo.png"
-            : "https://raw.githubusercontent.com/Secludedly/ZE-FusionBot-Sprite-Images/main/botstop.png";
+        bool isOnline = status == "Online";
+        var description = isOnline ? "The trade bot is now accepting requests." : "The trade bot has gone offline.";
+        var statusIcon = isOnline ? "\ud83d\udfe2" : "\ud83d\udd34";
+        var thumbnailUrl = GetBotPokemonSprite(botName);
+        var authorIconUrl = GetBotAuthorIcon(botName);
+        var embedColor = isOnline ? new Color(16, 185, 129) : new Color(239, 68, 68);
 
         var embed = new EmbedBuilder()
-            .WithTitle("Bot Status Report")
-            .WithDescription(fullStatusMessage)
-            .WithColor(EmbedColorConverter.ToDiscordColor(color))
+            .WithAuthor("PKM-Universe", authorIconUrl)
+            .WithTitle($"{statusIcon} {botName} is {status}!")
+            .WithDescription(description)
+            .WithColor(embedColor)
             .WithThumbnailUrl(thumbnailUrl)
+            .WithFooter("PKM-Universe Trade System")
             .WithTimestamp(DateTimeOffset.Now)
             .Build();
 
@@ -499,24 +521,84 @@ public sealed partial class SysCord<T> where T : PKM, new()
         }
     }
 
-    private async Task HandleInteractionAsync(SocketInteraction interaction)
+    private Task HandleInteractionAsync(SocketInteraction interaction)
+    {
+        // Fire on separate thread to prevent gateway blocking / 3-second timeout
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                if (interaction is SocketMessageComponent component)
+                {
+                    await HandleComponentInteractionAsync(component).ConfigureAwait(false);
+                    return;
+                }
+
+                var context = new SocketInteractionContext(_client, interaction);
+                await _interactions.ExecuteCommandAsync(context, _services).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                await Log(new LogMessage(LogSeverity.Error, "Interactions", $"Error handling interaction: {ex.Message}", ex)).ConfigureAwait(false);
+            }
+        });
+        return Task.CompletedTask;
+    }
+
+
+    private async Task HandleComponentInteractionAsync(SocketMessageComponent component)
     {
         try
         {
-            var context = new SocketInteractionContext(_client, interaction);
-            await _interactions.ExecuteCommandAsync(context, _services).ConfigureAwait(false);
+            var customId = component.Data.CustomId;
+
+            if (customId.StartsWith("trade_close:"))
+            {
+                // Dismiss — delete the message
+                if (component.Message != null)
+                    await component.Message.DeleteAsync().ConfigureAwait(false);
+                else
+                    await component.RespondAsync("Message dismissed!", ephemeral: true).ConfigureAwait(false);
+            }
+            else if (customId.StartsWith("trade_requeue:"))
+            {
+                var commandPrefix = Runner.Config.Discord.CommandPrefix;
+                await component.RespondAsync(
+                    $"To re-queue, use the `{commandPrefix}trade` command or the `/trade` slash command in the server channel.\n" +
+                    $"Your previous trade details are not retained — please submit a new request!",
+                    ephemeral: true).ConfigureAwait(false);
+
+                // Remove buttons from the original message
+                if (component.Message != null)
+                    await component.Message.ModifyAsync(m => m.Components = new ComponentBuilder().Build()).ConfigureAwait(false);
+            }
+            else if (customId.StartsWith("trade_again:"))
+            {
+                var commandPrefix = Runner.Config.Discord.CommandPrefix;
+                await component.RespondAsync(
+                    $"To trade again, use the `{commandPrefix}trade` command or the `/trade` slash command in the server channel!",
+                    ephemeral: true).ConfigureAwait(false);
+
+                if (component.Message != null)
+                    await component.Message.ModifyAsync(m => m.Components = new ComponentBuilder().Build()).ConfigureAwait(false);
+            }
+            else if (customId.StartsWith("trade_cancel:"))
+            {
+                await component.RespondAsync("Trade cancellation noted. The bot will cancel your trade if it hasn't started yet.", ephemeral: true).ConfigureAwait(false);
+
+                if (component.Message != null)
+                    await component.Message.ModifyAsync(m => m.Components = new ComponentBuilder().Build()).ConfigureAwait(false);
+            }
+            else
+            {
+                // Unknown button — pass through to InteractionService
+                var ctx = new SocketInteractionContext(_client, component);
+                await _interactions.ExecuteCommandAsync(ctx, _services).ConfigureAwait(false);
+            }
         }
         catch (Exception ex)
         {
-            await Log(new LogMessage(LogSeverity.Error, "Interactions", $"Error handling interaction: {ex.Message}", ex)).ConfigureAwait(false);
-
-            if (interaction.Type == InteractionType.ApplicationCommand)
-            {
-                if (interaction.HasResponded)
-                    await interaction.FollowupAsync("An error occurred while processing the command.", ephemeral: true).ConfigureAwait(false);
-                else
-                    await interaction.RespondAsync("An error occurred while processing the command.", ephemeral: true).ConfigureAwait(false);
-            }
+            await Log(new LogMessage(LogSeverity.Error, "Components", $"Error handling component interaction: {ex.Message}", ex)).ConfigureAwait(false);
         }
     }
 
@@ -628,6 +710,52 @@ public sealed partial class SysCord<T> where T : PKM, new()
         var finalResponse = $"{randomResponse}";
 
         await msg.Channel.SendMessageAsync(finalResponse).ConfigureAwait(false);
+    }
+
+    private static string GetBotPokemonSprite(string botName)
+    {
+        var name = botName.ToLowerInvariant();
+        const string homeBase = "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/home/";
+        if (name.Contains("pikachu")) return homeBase + "25.png";
+        if (name.Contains("mew") && !name.Contains("mewtwo")) return homeBase + "151.png";
+        if (name.Contains("meloetta")) return homeBase + "648.png";
+        if (name.Contains("floette")) return "https://creator.pkm-universe.com/assets/sprites/670-eternal.png";
+        if (name.Contains("jirachi")) return homeBase + "385.png";
+        if (name.Contains("celebi")) return homeBase + "251.png";
+        if (name.Contains("glaceon")) return homeBase + "471.png";
+        if (name.Contains("flareon")) return homeBase + "136.png";
+        if (name.Contains("landorus")) return homeBase + "645.png";
+        if (name.Contains("hoopa")) return homeBase + "720.png";
+        if (name.Contains("dian")) return homeBase + "719.png";
+        if (name.Contains("groudon")) return homeBase + "383.png";
+        if (name.Contains("giratina")) return homeBase + "487.png";
+        if (name.Contains("rayquaza")) return homeBase + "384.png";
+        if (name.Contains("arceus")) return homeBase + "493.png";
+        if (name.Contains("eevee")) return homeBase + "133.png";
+        return "https://creator.pkm-universe.com/assets/icons/icon-192.png";
+    }
+
+    private static string GetBotAuthorIcon(string botName)
+    {
+        var name = botName.ToLowerInvariant();
+        const string homeBase = "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/home/";
+        if (name.Contains("mew") && !name.Contains("mewtwo")) return homeBase + "151.png";
+        if (name.Contains("meloetta")) return homeBase + "648.png";
+        if (name.Contains("floette")) return "https://creator.pkm-universe.com/assets/sprites/670-eternal.png";
+        if (name.Contains("jirachi")) return homeBase + "385.png";
+        if (name.Contains("celebi")) return homeBase + "251.png";
+        if (name.Contains("glaceon")) return homeBase + "471.png";
+        if (name.Contains("flareon")) return homeBase + "136.png";
+        if (name.Contains("landorus")) return homeBase + "645.png";
+        if (name.Contains("hoopa")) return homeBase + "720.png";
+        if (name.Contains("dian")) return homeBase + "719.png";
+        if (name.Contains("groudon")) return homeBase + "383.png";
+        if (name.Contains("giratina")) return homeBase + "487.png";
+        if (name.Contains("rayquaza")) return homeBase + "384.png";
+        if (name.Contains("arceus")) return homeBase + "493.png";
+        if (name.Contains("pikachu")) return homeBase + "25.png";
+        if (name.Contains("eevee")) return homeBase + "133.png";
+        return homeBase + "155.png"; // Cyndaquil default
     }
 
     private static string TrimStatusEmoji(string channelName)

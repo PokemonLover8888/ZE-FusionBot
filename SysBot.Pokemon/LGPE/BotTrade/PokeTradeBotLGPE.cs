@@ -258,19 +258,9 @@ public class PokeTradeBotLGPE(PokeTradeHub<PB7> Hub, PokeBotState Config) : Poke
             if (tradeDetails != null && tradeDetails.TID != 0 && tradeDetails.SID != 0)
             {
                 Log($"Applying AutoOT to the Pokémon using Trainer OT: {tradeDetails.OT}, TID: {tradeDetails.TID}, SID: {tradeDetails.SID}");
-                var origLang = toSend.Language;
-                var cfgLang = (int)Hub.Config.Legality.GenerateLanguage;
-                bool hasExplLang = origLang != cfgLang && origLang >= 1 && origLang <= 12;
-
                 var updatedToSend = await ApplyAutoOT(toSend, trainerID);
                 if (updatedToSend != null)
                 {
-                    if (hasExplLang && updatedToSend.Language != origLang)
-                    {
-                        updatedToSend.Language = origLang;
-                        updatedToSend.RefreshChecksum();
-                        await WriteBoxPokemon(updatedToSend, 0, 0, token);
-                    }
                     toSend = updatedToSend;
                     poke.TradeData = updatedToSend;
                 }
@@ -895,29 +885,37 @@ public class PokeTradeBotLGPE(PokeTradeHub<PB7> Hub, PokeBotState Config) : Poke
         if (tradeDetails != null)
         {
             var cln = toSend.Clone();
+#pragma warning disable CS8601 // Possible null reference assignment.
+            cln.OriginalTrainerName = tradeDetails.OT;
+#pragma warning restore CS8601 // Possible null reference assignment.
             cln.SetDisplayTID((uint)tradeDetails.TID);
             cln.SetDisplaySID((uint)tradeDetails.SID);
 
-            // Preserve toSend.Language if valid (1-12), otherwise fall back to cached/default language
-            int originalLanguage = toSend.Language;
-            if (originalLanguage >= 1 && originalLanguage <= 12)
+            // Only override language if Pokemon has default/config language
+            // If user explicitly requested a different language, preserve it
+            var configLanguage = (int)Hub.Config.Legality.GenerateLanguage;
+            if (tradeDetails.Language.HasValue && tradeDetails.Language.Value >= 1 && tradeDetails.Language.Value <= 12)
             {
-                cln.Language = originalLanguage;
+                // Use cached trade partner's language if available and valid
+                if (toSend.Language != configLanguage && toSend.Language >= 1 && toSend.Language <= 12)
+                {
+                    cln.Language = toSend.Language; // Preserve explicitly requested language
+                }
+                else
+                {
+                    cln.Language = tradeDetails.Language.Value; // Use cached language
+                }
             }
-            else if (tradeDetails.Language.HasValue && tradeDetails.Language.Value >= 1 && tradeDetails.Language.Value <= 12)
+            else if (toSend.Language != configLanguage && toSend.Language >= 1 && toSend.Language <= 12)
             {
-                cln.Language = tradeDetails.Language.Value;
+                cln.Language = toSend.Language; // Preserve explicitly requested language
             }
             else
             {
                 cln.Language = (int)LanguageID.English; // Default to English
             }
 
-#pragma warning disable CS8601 // Possible null reference assignment.
-            string otName = Helpers.LanguageHelper.TruncateOTName(tradeDetails.OT, cln.Language);
-            cln.OriginalTrainerName = otName;
-#pragma warning restore CS8601 // Possible null reference assignment.
-
+            // Note: PB7 (Let's Go) doesn't have HandlingTrainerLanguage field
             ClearOTTrash(cln, tradeDetails);
 
             if (!toSend.IsNicknamed)

@@ -330,9 +330,22 @@ public partial class BotServer(Main mainForm, int port = 8080, int tcpPort = 808
                 return WebTradeHandler.ToJson(new { success = false, error = "Invalid JSON format" });
             }
 
+            // Event file path takes precedence over showdown set
+            if (tradeRequest != null && !string.IsNullOrWhiteSpace(tradeRequest.EventFilePath))
+            {
+                LogUtil.LogInfo($"Web event trade request from {tradeRequest.Username}: {tradeRequest.EventFilePath}", "WebTrade");
+                var eventResult = WebTradeHandler.SubmitTradeFromEventFile(
+                    tradeRequest.EventFilePath,
+                    tradeRequest.Username ?? "WebUser",
+                    tradeRequest.TradeCode,
+                    tradeRequest.ForceShiny
+                );
+                return WebTradeHandler.ToJson(eventResult);
+            }
+
             if (tradeRequest == null || string.IsNullOrWhiteSpace(tradeRequest.ShowdownSet))
             {
-                return WebTradeHandler.ToJson(new { success = false, error = "Missing showdownSet in request" });
+                return WebTradeHandler.ToJson(new { success = false, error = "Missing showdownSet or eventFilePath in request" });
             }
 
             LogUtil.LogInfo($"Web trade request from {tradeRequest.Username}: {tradeRequest.ShowdownSet.Split('\n')[0]}", "WebTrade");
@@ -341,7 +354,8 @@ public partial class BotServer(Main mainForm, int port = 8080, int tcpPort = 808
             var result = WebTradeHandler.SubmitTrade(
                 tradeRequest.ShowdownSet,
                 tradeRequest.Username ?? "WebUser",
-                tradeRequest.TradeCode
+                tradeRequest.TradeCode,
+                tradeRequest.ForceShiny
             );
 
             return WebTradeHandler.ToJson(result);
@@ -1010,6 +1024,28 @@ public partial class BotServer(Main mainForm, int port = 8080, int tcpPort = 808
             Status = c.ReadBotState()
         }).ToList();
 
+        // SwitchReady: at least one Switch routine is in a working state
+        // (anything not STOPPED / FAULTED / IDLE counts as ready-to-serve).
+        // PLZA bots run their console connections internally and have zero
+        // BotStatusInfo entries; treat that case as "trust the process" so
+        // Floette-ZA et al. don't get falsely marked Offline.
+        bool switchReady;
+        if (botStatuses.Count == 0)
+        {
+            switchReady = true; // no console controllers exposed = no signal; assume OK
+        }
+        else
+        {
+            switchReady = botStatuses.Any(b =>
+                !string.Equals(b.Status, "STOPPED", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(b.Status, "FAULTED", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(b.Status, "IDLE",    StringComparison.OrdinalIgnoreCase));
+        }
+
+        var discordConnected = SysBot.Pokemon.BotHealthReporter.DiscordConnected;
+        var discordLatency   = SysBot.Pokemon.BotHealthReporter.DiscordLatencyMs;
+        var tradeReady       = discordConnected && switchReady;
+
         return new BotInstance
         {
             ProcessId = Environment.ProcessId,
@@ -1022,7 +1058,11 @@ public partial class BotServer(Main mainForm, int port = 8080, int tcpPort = 808
             IsOnline = true,
             IsMaster = IsMasterInstance(),
             BotStatuses = botStatuses,
-            ProcessPath = Environment.ProcessPath
+            ProcessPath = Environment.ProcessPath,
+            DiscordConnected = discordConnected,
+            DiscordLatencyMs = discordLatency,
+            SwitchReady = switchReady,
+            TradeReady = tradeReady,
         };
     }
 
@@ -1606,9 +1646,7 @@ public partial class BotServer(Main mainForm, int port = 8080, int tcpPort = 808
 
     private ProgramConfig? GetConfig()
     {
-        var configProp = _mainForm.GetType().GetProperty("Config",
-            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-        return configProp?.GetValue(_mainForm) as ProgramConfig;
+        return Main.Config;
     }
 
     private static string GetBotName(PokeBotState state, ProgramConfig? _)
@@ -1704,35 +1742,10 @@ public partial class BotServer(Main mainForm, int port = 8080, int tcpPort = 808
                 }, JsonOptions);
             }
 
-            // Get the queue info using reflection to access the generic TradeQueueInfo
-            var hubProperty = config.Hub.GetType().GetProperty("Queues");
-            if (hubProperty?.GetValue(config.Hub) is not object queues)
+            // Get queue info via WebTradeHandler (which has the actual Hub registered)
+            var userList = WebTradeHandler.GetQueueUserList("{0}|{1}|{2}|{3}|{4}");
+            if (userList != null)
             {
-                return JsonSerializer.Serialize(new
-                {
-                    success = false,
-                    queue = Array.Empty<object>(),
-                    message = "Queue system not initialized"
-                }, JsonOptions);
-            }
-
-            var infoProperty = queues.GetType().GetProperty("Info");
-            if (infoProperty?.GetValue(queues) is not object info)
-            {
-                return JsonSerializer.Serialize(new
-                {
-                    success = false,
-                    queue = Array.Empty<object>(),
-                    message = "Queue info not available"
-                }, JsonOptions);
-            }
-
-            // Get the UsersInQueue list using the GetUserList method or direct access
-            var getUserListMethod = info.GetType().GetMethod("GetUserList");
-            if (getUserListMethod != null)
-            {
-                // Use format: ID, Code, Type, Username, Species
-                var userList = getUserListMethod.Invoke(info, new object[] { "{0}|{1}|{2}|{3}|{4}" }) as IEnumerable<string>;
                 var queueItems = new List<object>();
                 int position = 1;
 

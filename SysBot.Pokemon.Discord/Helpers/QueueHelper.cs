@@ -171,7 +171,7 @@ public static class QueueHelper<T> where T : PKM, new()
         {
             var held = pk.HeldItem;
             var itemName = held > 0 ? PKHeX.Core.GameInfo.GetStrings("en").Item[held] : "(none)";
-            await context.Channel.SendMessageAsync($"{trader.Mention} - Trade blocked: the held item '{itemName}' cannot be traded in PLZA.").ConfigureAwait(false);
+            await context.Channel.SendMessageAsync($"{trader.Mention} - Trade blocked: the held item '{itemName}' cannot be traded in this game.").ConfigureAwait(false);
             return new TradeQueueResult(false);
         }
 
@@ -222,7 +222,7 @@ public static class QueueHelper<T> where T : PKM, new()
                 .WithAuthor(new EmbedAuthorBuilder()
                     .WithName(embedData.AuthorName)
                     .WithIconUrl(trader.GetAvatarUrl() ?? trader.GetDefaultAvatarUrl())
-                    .WithUrl("https://genpkm.com/pokecreator"));
+                    .WithUrl("https://creator.pkm-universe.com/trade-hub-ultimate.html"));
 
             DetailsExtractor<T>.AddAdditionalText(embedBuilder);
 
@@ -371,7 +371,7 @@ public static class QueueHelper<T> where T : PKM, new()
         {
             var held = firstTrade.HeldItem;
             var itemName = held > 0 ? PKHeX.Core.GameInfo.GetStrings("en").Item[held] : "(none)";
-            await context.Channel.SendMessageAsync($"{trader.Mention} - Trade blocked: the held item '{itemName}' cannot be traded in PLZA.").ConfigureAwait(false);
+            await context.Channel.SendMessageAsync($"{trader.Mention} - Trade blocked: the held item '{itemName}' cannot be traded in this game.").ConfigureAwait(false);
             return;
         }
 
@@ -443,7 +443,7 @@ public static class QueueHelper<T> where T : PKM, new()
                         .WithAuthor(new EmbedAuthorBuilder()
                             .WithName(embedData.AuthorName)
                             .WithIconUrl(trader.GetAvatarUrl() ?? trader.GetDefaultAvatarUrl())
-                            .WithUrl("https://genpkm.com/pokecreator"));
+                            .WithUrl("https://creator.pkm-universe.com/trade-hub-ultimate.html"));
 
                     DetailsExtractor<T>.AddAdditionalText(embedBuilder);
                     DetailsExtractor<T>.AddNormalTradeFields(embedBuilder, embedData, trader.Mention, pk);

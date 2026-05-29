@@ -3,10 +3,14 @@ using Discord.WebSocket;
 using PKHeX.Core;
 using PKHeX.Core.AutoMod;
 using PKHeX.Drawing.PokeSprite;
+using SysBot.Base;
 using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
+using System.Net.Http;
+using System.Text;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Color = Discord.Color;
@@ -199,6 +203,35 @@ public class DiscordTradeNotifier<T> : IPokeTradeNotifier<T>, IDisposable
         // Update unique trade ID from the detail
         _uniqueTradeID = info.UniqueTradeID;
 
+        // Report trade STARTED to trade-bridge-api (not yet completed — used for "recent
+        // trades" display, but does NOT yet apply to user daily limit because the trade
+        // could still fail before completion).
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var speciesName = IsMysteryEgg ? "Mystery Egg" : System.Text.RegularExpressions.Regex.Replace(ShowdownParsing.GetShowdownText(Data).Split('\n')[0].Split('@')[0].Trim(), @"\s*\([MF]\)\s*$", "").Trim();
+                var botName = string.IsNullOrEmpty(Hub.Config.BotName) ? "SysBot" : Hub.Config.BotName;
+                var avatar = Trader.GetAvatarUrl() ?? "";
+                var isShiny = Data.IsShiny;
+                var payload = System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    botName,
+                    username = Trader.Username,
+                    pokemon = speciesName,
+                    isShiny,
+                    avatar,
+                    tradeCode = Code,
+                    @event = "started",
+                    completedAt = DateTime.UtcNow.ToString("o")
+                });
+                using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+                await client.PostAsync("http://localhost:3456/trade-complete",
+                    new StringContent(payload, System.Text.Encoding.UTF8, "application/json"));
+            }
+            catch { }
+        });
+
         // Stop periodic updates as we're now moving to the active trading phase
         StopPeriodicUpdates();
 
@@ -291,6 +324,7 @@ public class DiscordTradeNotifier<T> : IPokeTradeNotifier<T>, IDisposable
 
     public void TradeFinished(PokeRoutineExecutor<T> routine, PokeTradeDetail<T> info, T result)
     {
+        LogUtil.LogInfo("[TradeFinished] ENTERED - reporting to trade-bridge", "TradeNotifier");
         // Only stop updates and invoke OnFinish for single trades or the last trade in a batch
         if (TotalBatchTrades <= 1 || BatchTradeNumber == TotalBatchTrades)
         {
@@ -331,6 +365,39 @@ public class DiscordTradeNotifier<T> : IPokeTradeNotifier<T>, IDisposable
         {
             Trader.SendPKMAsync(result, "Here's what you traded me!").ConfigureAwait(false);
         }
+
+        // Report trade COMPLETED to trade-bridge-api. This is the fair-cooldown signal:
+        // the trade-bridge will increment the user's daily trade count NOW (not at queue
+        // accept time). If TradeFinished is never called (trade failed mid-flight), the
+        // user's count is never incremented.
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var speciesName = IsMysteryEgg ? "Mystery Egg" : System.Text.RegularExpressions.Regex.Replace(ShowdownParsing.GetShowdownText(Data).Split('\n')[0].Split('@')[0].Trim(), @"\s*\([MF]\)\s*$", "").Trim();
+                var botName = string.IsNullOrEmpty(Hub.Config.BotName) ? "SysBot" : Hub.Config.BotName;
+                var avatar = Trader.GetAvatarUrl() ?? "";
+                var isShiny = Data.IsShiny;
+                var payload = JsonSerializer.Serialize(new
+                {
+                    botName,
+                    username = Trader.Username,
+                    pokemon = speciesName,
+                    isShiny,
+                    avatar,
+                    tradeCode = Code,
+                    @event = "completed",
+                    completedAt = DateTime.UtcNow.ToString("o")
+                });
+                using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+                await client.PostAsync("http://localhost:3456/trade-complete",
+                    new StringContent(payload, Encoding.UTF8, "application/json"));
+            }
+            catch (Exception ex)
+            {
+                LogUtil.LogError($"[TradeBridge] Failed to report trade: {ex.Message}", "TradeNotifier");
+            }
+        });
     }
 
     public void SendNotification(PokeRoutineExecutor<T> routine, PokeTradeDetail<T> info, string message)
