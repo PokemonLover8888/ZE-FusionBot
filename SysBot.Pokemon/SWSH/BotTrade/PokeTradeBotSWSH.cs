@@ -1754,24 +1754,55 @@ public class PokeTradeBotSWSH(PokeTradeHub<PK8> hub, PokeBotState config) : Poke
             cln.ClearNickname();
 
         if (toSend.IsShiny)
+        {
+            Log($"[AutoOT-SWSH Shiny] Recalc PID. orig={toSend.PID:X8} xor={toSend.ShinyXor} newTID={cln.TID16} newSID={cln.SID16}");
             cln.PID = (uint)((cln.TID16 ^ cln.SID16 ^ (cln.PID & 0xFFFF) ^ toSend.ShinyXor) << 16) | (cln.PID & 0xFFFF);
+            Log($"[AutoOT-SWSH Shiny] new PID={cln.PID:X8} IsShiny={cln.IsShiny}");
+            // SV has this safety net; SWSH was missing it. If the recalc landed on a non-shiny PID,
+            // the mon claims shiny but isn't → illegal → AutoOT silently fell back. Force shiny back.
+            if (!cln.IsShiny)
+            {
+                Log("[AutoOT-SWSH Shiny] recalc lost shiny — forcing shiny back.");
+                cln.SetIsShiny(true);
+            }
+        }
 
         if (!toSend.ChecksumValid)
             cln.RefreshChecksum();
 
         var tradeswsh = new LegalityAnalysis(cln);
+        var swshReport = tradeswsh.Report();
+
+        // Shiny AutoOT bypass: changing the partner's TID/SID forces a PID recalc to keep the mon
+        // shiny, which breaks a seed-locked encounter's PID/EC correlation. PKHeX flags
+        // "PID+ correlation does not match", but the recalc'd PID is a VALID shiny PID for the new
+        // TID/SID, and Sword/Shield + HOME accept the trade. Same precedent as the BDSP Deoxys
+        // PID-flip bypass. Scope: shiny only, and only when that specific correlation flag is present.
+        bool isShinyPidCorrelationOnly = !tradeswsh.Valid && toSend.IsShiny &&
+            (swshReport.Contains("PID+ correlation does not match", StringComparison.OrdinalIgnoreCase)
+             || swshReport.Contains("PID should be equal to EC", StringComparison.OrdinalIgnoreCase));
+
         if (tradeswsh.Valid)
         {
             Log("Pokemon is valid with Trade Partner Info applied. Swapping details.");
             await SetBoxPokemon(cln, 0, 0, token, sav).ConfigureAwait(false);
             return cln;
         }
+        else if (isShinyPidCorrelationOnly)
+        {
+            // Game-accepted shiny with the partner's real OT — ship it (RNG-purist flag only).
+            Log($"[AutoOT-SWSH] Shiny seed-locked PID correlation flag only — recalc'd PID is valid-shiny " +
+                $"for new TID/SID and SwSh/HOME accept it. Shipping with partner OT='{trainerName}' " +
+                $"TID7={tidsid % 1_000_000} SID7={tidsid / 1_000_000}.");
+            await SetBoxPokemon(cln, 0, 0, token, sav).ConfigureAwait(false);
+            return cln;
+        }
         else
         {
-            // Log the actual legality report + the partner values we applied so AutoOT failures are diagnosable.
+            // Real legality failure (not the shiny correlation) — log it and keep the original OT.
             Log($"[AutoOT-SWSH] Invalid after Trade Partner Info — falling back to default OT. " +
                 $"Applied OT='{trainerName}' TID7={tidsid % 1_000_000} SID7={tidsid / 1_000_000} lang={cln.Language}. " +
-                $"Report: {tradeswsh.Report().Replace("\n", " | ")}");
+                $"Report: {swshReport.Replace("\n", " | ")}");
             return toSend;
         }
     }
