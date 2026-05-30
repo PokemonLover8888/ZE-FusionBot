@@ -1137,6 +1137,7 @@ public class PokeTradeBotBS : PokeRoutineExecutor8BS, ICountBot, ITradeBot, IDis
             return PokeTradeResult.TradeEvolveNotAllowed;
         }
 
+        Log(PokeTradeBotUtil.FormatFinalTrainerInfo(toSend));
         var tradeResult = await ConfirmAndStartTrading(poke, token).ConfigureAwait(false);
         if (tradeResult != PokeTradeResult.Success)
             return tradeResult;
@@ -1499,6 +1500,7 @@ public class PokeTradeBotBS : PokeRoutineExecutor8BS, ICountBot, ITradeBot, IDis
             }
 
             Log($"Confirming trade {currentTradeIndex + 1}/{totalBatchTrades}.");
+            Log(PokeTradeBotUtil.FormatFinalTrainerInfo(toSend));
             TradeProgressChanged?.Invoke(92);
 
             var tradeResult = await ConfirmAndStartTrading(poke, token).ConfigureAwait(false);

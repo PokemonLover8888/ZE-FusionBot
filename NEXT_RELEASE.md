@@ -21,7 +21,15 @@ bump `TradeBot.cs` version and cut the release with these as the changelog.
 *(none queued)*
 
 ### Internal / chore
-*(none queued)*
+- **Port Sec's `FormatFinalTrainerInfo` logging** (from `Secludedly/FusionBot@de5263d`
+  v8.1.7). Adds a `Log(...)` call immediately before each `ConfirmAndStartTrading`
+  in BS/LA/LGPE/PLZA/SV/SWSH that prints the final OT/TID/SID/OTGender that will
+  ship. Pure diagnostic — zero behavior change — but turns future AutoOT regressions
+  (e.g. the recent 1-month SWSH default-to-Eric bug) into a single log grep instead
+  of a multi-hour root-cause hunt.
+
+  - New helper: `PokeTradeBotUtil.FormatFinalTrainerInfo(PKM)`
+  - 12 call-site inserts total (2 per game bot — single-trade + batch-trade paths)
 
 ---
 
