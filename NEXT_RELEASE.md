@@ -14,7 +14,12 @@ bump `TradeBot.cs` version and cut the release with these as the changelog.
 *(none queued)*
 
 ### Fixes
-*(none queued)*
+- **Stop blocking shiny Mewtwo/Heatran/Darkrai/Xerneas/Yveltal on Z-A bots.** Yesterday's
+  un-block was partial — only K/G/R/Z came out of `IsHomeRejectingShinyZALegendary`,
+  leaving the other five Z-A shiny-locked legendaries still erroring out at request time.
+  They're in the same boat: bot can ship the file for in-game use, the embed's
+  Non-Native warning points to Celebi-SWSH for HOME upload. Now they all behave
+  consistently. The list is fully empty.
 
 ### Internal / chore
 *(none queued)*

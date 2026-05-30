@@ -1888,19 +1888,14 @@ public static class Helpers<T> where T : PKM, new()
     /// </summary>
     public static bool IsHomeRejectingShinyZALegendary(ushort species)
     {
-        return species switch
-        {
-            150 => true, // Mewtwo
-            // 382 Kyogre, 383 Groudon, 384 Rayquaza, 807 Zeraora — DELIBERATELY NOT BLOCKED.
-            // Shipping in-game shiny for Z-A gameplay is desired; HOME upload doesn't work but
-            // that's surfaced in the QueueHelper "Non-Native" embed which now points members to
-            // Celebi-SWSH / Jirachi-SWSH for a HOME-uploadable version.
-            485 => true, // Heatran
-            491 => true, // Darkrai
-            716 => true, // Xerneas
-            717 => true, // Yveltal
-            _   => false,
-        };
+        // DELIBERATELY EMPTY as of 2026-05-30. Z-A shiny-locked legendaries (150 Mewtwo,
+        // 382/383/384 Kyogre/Groudon/Rayquaza, 485 Heatran, 491 Darkrai, 716/717 Xerneas/
+        // Yveltal, 807 Zeraora) are all in the same boat: members can still legitimately
+        // receive them on a Z-A bot for in-game use. HOME upload from the Z-A save will
+        // fail (encounter is shiny-locked there + tracker is fabricated), but the
+        // QueueHelper Non-Native embed surfaces that and points members at Celebi-SWSH /
+        // Jirachi-SWSH for a HOME-uploadable shiny. Don't block at request time.
+        return false;
     }
 
     /// <summary>
