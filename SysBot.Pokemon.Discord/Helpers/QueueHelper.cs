@@ -235,13 +235,18 @@ public static class QueueHelper<T> where T : PKM, new()
                 DetailsExtractor<T>.AddSpecialTradeFields(embedBuilder, isMysteryEgg, type == PokeRoutineType.SeedCheck, type == PokeRoutineType.Clone, type == PokeRoutineType.FixOT, trader.Mention);
             }
 
-            // Check if the Pokemon is Non-Native and/or has a Home Tracker
+            // Check if the Pokemon is Non-Native and/or has a Home Tracker.
+            // On Z-A (PA9) bots, append a hint pointing members to the SwSh bots for a
+            // HOME-uploadable version of the same species — the Z-A bot can ship the file
+            // for in-game use but the ZA → HOME transfer fails.
+            bool isZABot = typeof(T) == typeof(PA9);
+            string swshHint = isZABot ? "\n\n*For a HOME-uploadable shiny, request from **Celebi-SWSH** or **Jirachi-SWSH** instead.*" : "";
             if (pk is IHomeTrack homeTrack)
             {
                 if (homeTrack.HasTracker && isNonNative)
                 {
                     embedBuilder.Footer.IconUrl = "https://raw.githubusercontent.com/Secludedly/ZE-FusionBot-Sprite-Images/main/exclamation.gif";
-                    embedBuilder.AddField("**__Notice__**: **This Pokemon is Non-Native & Has Home Tracker.**", "*AutoOT not applied.*");
+                    embedBuilder.AddField("**__Notice__**: **This Pokemon is Non-Native & Has Home Tracker.**", "*AutoOT not applied.*" + swshHint);
                 }
                 else if (homeTrack.HasTracker)
                 {
@@ -251,13 +256,13 @@ public static class QueueHelper<T> where T : PKM, new()
                 else if (isNonNative)
                 {
                     embedBuilder.Footer.IconUrl = "https://raw.githubusercontent.com/Secludedly/ZE-FusionBot-Sprite-Images/main/exclamation.gif";
-                    embedBuilder.AddField("**__Notice__**: **This Pokemon is Non-Native.**", "*Cannot enter HOME & AutoOT not applied.*");
+                    embedBuilder.AddField("**__Notice__**: **This Pokemon is Non-Native.**", "*Cannot enter HOME & AutoOT not applied.*" + swshHint);
                 }
             }
             else if (isNonNative)
             {
                 embedBuilder.Footer.IconUrl = "https://raw.githubusercontent.com/Secludedly/ZE-FusionBot-Sprite-Images/main/exclamation.gif";
-                embedBuilder.AddField("**__Notice__**: **This Pokemon is Non-Native.**", "*Cannot enter HOME & AutoOT not applied.*");
+                embedBuilder.AddField("**__Notice__**: **This Pokemon is Non-Native.**", "*Cannot enter HOME & AutoOT not applied.*" + swshHint);
             }
 
             DetailsExtractor<T>.AddThumbnails(embedBuilder, type == PokeRoutineType.Clone, type == PokeRoutineType.SeedCheck, embedData.HeldItemUrl);

@@ -241,7 +241,7 @@ public static class Helpers<T> where T : PKM, new()
             var speciesName = GameInfo.Strings.Species[template.Species];
             return Task.FromResult(new ProcessedPokemonResult<T>
             {
-                Error = $"**Shiny {speciesName} can't be traded on Legends: Z-A bots.** {speciesName}'s Z-A native encounter is shiny-locked, so the bot has to route through SwSh Max Lair (Crown Tundra Dynamax Adventure). The resulting PA9 file works in-game but Z-A flags it as **Non-Native, cannot enter HOME** because the HOME tracker isn't one HOME's database recognizes (only real GO/HOME-extracted files have valid trackers). Until a real Z-A shiny {speciesName} source file is available, this combination can't be shipped. Request non-shiny, or try a different shiny species.",
+                Error = $"**Shiny {speciesName} can't be delivered via a Legends: Z-A bot in a HOME-compatible way.** {speciesName}'s Z-A encounter is shiny-locked, so no legitimate shiny PA9 exists, and HOME's server-side validation rejects any file with a fabricated tracker.\n\n**Working path:** request shiny {speciesName} from **Celebi-SWSH** or **Jirachi-SWSH** instead — they deliver a Max Lair shiny .pk8 to your SwSh save (Crown Tundra Dynamax Adventure encounter, shiny-eligible). Upload from SwSh → HOME (HOME assigns a fresh real tracker), then you can pull it down into Legends: Z-A through HOME if you want it in your Z-A save.",
                 ShowdownSet = set
             });
         }
@@ -1891,9 +1891,10 @@ public static class Helpers<T> where T : PKM, new()
         return species switch
         {
             150 => true, // Mewtwo
-            // 382 Kyogre  unblocked — real Max-Lair shiny .pa9 (FA3A744CC0AE) in HOME-Ready-Files
-            // 383 Groudon unblocked — real Max-Lair shiny .pa9 (CBDA99488EDE) in HOME-Ready-Files
-            // 384 Rayquaza unblocked 2026-05-19 — real Z-A shiny .pa9 in HOME-Ready-Files
+            // 382 Kyogre, 383 Groudon, 384 Rayquaza, 807 Zeraora — DELIBERATELY NOT BLOCKED.
+            // Shipping in-game shiny for Z-A gameplay is desired; HOME upload doesn't work but
+            // that's surfaced in the QueueHelper "Non-Native" embed which now points members to
+            // Celebi-SWSH / Jirachi-SWSH for a HOME-uploadable version.
             485 => true, // Heatran
             491 => true, // Darkrai
             716 => true, // Xerneas
