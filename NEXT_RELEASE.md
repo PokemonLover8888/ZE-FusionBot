@@ -5,40 +5,27 @@ member-facing feature, a bug fix worth calling out, or a few changes worth bundl
 bump `TradeBot.cs` version and cut the release with these as the changelog.
 
 ## Current Baseline
-- Last release: **v8.0.0** (commit `c75d47c`, 2026-05-28)
-- Last released to all 12 trade-bot EXEs: **v8.0.0 + d5686d6** (deployed 2026-05-29)
+- Last release: **v8.0.1** (2026-05-30)
+- Last released to all 12 trade-bot EXEs: **v8.0.1** (deployed 2026-05-30)
 
 ## Queued for next release
 
 ### Improvements
-- **`d5686d6` — HOME-compatible-shiny hint on Z-A Non-Native trade embeds**  
-  When a Z-A bot ships a non-PA9 shiny (Kyogre/Groudon/Rayquaza/Zeraora etc.), the
-  embed now appends *"For a HOME-uploadable shiny, request from Celebi-SWSH or
-  Jirachi-SWSH instead."* Members get the in-game shiny they wanted and know exactly
-  where to go if they want it HOME-uploadable.
+*(none queued)*
 
 ### Fixes
 *(none queued)*
 
 ### Internal / chore
-- **Port Sec's `FormatFinalTrainerInfo` logging** (from `Secludedly/FusionBot@de5263d`
-  v8.1.7). Adds a `Log(...)` call immediately before each `ConfirmAndStartTrading`
-  in BS/LA/LGPE/PLZA/SV/SWSH that prints the final OT/TID/SID/OTGender that will
-  ship. Pure diagnostic — zero behavior change — but turns future AutoOT regressions
-  (e.g. the recent 1-month SWSH default-to-Eric bug) into a single log grep instead
-  of a multi-hour root-cause hunt.
-
-  - New helper: `PokeTradeBotUtil.FormatFinalTrainerInfo(PKM)`
-  - 12 call-site inserts total (2 per game bot — single-trade + batch-trade paths)
+*(none queued)*
 
 ---
 
 ## How to ship
-1. Bump `SysBot.Pokemon\Helpers\TradeBot.cs` version constant (`v8.0.0` → next)
+1. Bump `SysBot.Pokemon\Helpers\TradeBot.cs` version constant
 2. Commit version bump
 3. Publish self-contained single-file EXE (`dotnet publish SysBot.Pokemon.WinForms/...`)
 4. Deploy to all bot folders via `Desktop\Deploy-2026-05-29\deploy.ps1` + `restart.ps1`
-   (or the equivalent for that release date)
 5. `git tag v8.0.x && git push --tags`
 6. Cut GitHub release on the tag, paste this file's "Queued" section as release notes
 7. Empty this file's "Queued" sections, update the baseline
