@@ -240,7 +240,26 @@ public static class QueueHelper<T> where T : PKM, new()
             // HOME-uploadable version of the same species — the Z-A bot can ship the file
             // for in-game use but the ZA → HOME transfer fails.
             bool isZABot = typeof(T) == typeof(PA9);
-            string swshHint = isZABot ? "\n\n*For a HOME-uploadable shiny, request from **Celebi-SWSH** or **Jirachi-SWSH** instead.*" : "";
+            // Pick the right "go request from" hint per species + form. Three buckets:
+            //   SwSh-only  → Galarian birds (form 1), Xerneas/Yveltal (Kalos, not in BDSP),
+            //                Zeraora (WC8 HOME Gift). Hint: Celebi-SWSH / Jirachi-SWSH.
+            //   BDSP-only  → Dialga, Palkia, Phione, Manaphy, Darkrai, Shaymin (not in SwSh
+            //                Max Lair). Hint: Rayquaza-BDSP / Giratina-BDSP.
+            //   Both       → K/G/R, Kanto birds (form 0), Kanto beasts, Mewtwo, Lugia, Ho-Oh,
+            //                Regis, Latias/Latios, Heatran, Regigigas, Giratina, Cresselia.
+            //                Hint: all four bots.
+            string swshHint = "";
+            if (isZABot)
+            {
+                int route = GetHomeUploadRoute(pk.Species, pk.Form);
+                swshHint = route switch
+                {
+                    1 => "\n\n*For a HOME-uploadable shiny, request from **Celebi-SWSH** or **Jirachi-SWSH** instead.*",
+                    2 => "\n\n*For a HOME-uploadable shiny, request from **Rayquaza-BDSP** or **Giratina-BDSP** instead.*",
+                    3 => "\n\n*For a HOME-uploadable shiny, request from **Celebi-SWSH**, **Jirachi-SWSH**, **Rayquaza-BDSP**, or **Giratina-BDSP** instead.*",
+                    _ => "\n\n*For a HOME-uploadable shiny, request from **Celebi-SWSH** or **Jirachi-SWSH** instead.*",
+                };
+            }
             if (pk is IHomeTrack homeTrack)
             {
                 if (homeTrack.HasTracker && isNonNative)
@@ -906,5 +925,59 @@ public static class QueueHelper<T> where T : PKM, new()
         filename = Path.GetFileName($"{Directory.GetCurrentDirectory()}//finalcode.png");
         Embed returnembed = new EmbedBuilder().WithTitle($"{lgcode[0]}, {lgcode[1]}, {lgcode[2]}").WithImageUrl($"attachment://{filename}").Build();
         return (filename, returnembed);
+    }
+
+    /// <summary>
+    /// Maps a Z-A-bot-served species/form to the HOME-uploadable redirect destination:
+    /// 1 = SwSh bots only (Celebi/Jirachi), 2 = BDSP bots only (Rayquaza-BDSP/Giratina-BDSP),
+    /// 3 = either works (list all four).
+    /// </summary>
+    private static int GetHomeUploadRoute(ushort species, byte form)
+    {
+        // Galarian birds (form 1) are SwSh-only — BDSP has no Galarian forms.
+        if ((species == 144 || species == 145 || species == 146) && form == 1)
+            return 1;
+
+        return species switch
+        {
+            // BDSP-only (not in SwSh Crown Tundra Max Lair encounter table)
+            483 => 2, // Dialga     — Spear Pillar (BD exclusive)
+            484 => 2, // Palkia     — Spear Pillar (SP exclusive)
+            489 => 2, // Phione     — BDSP Mystery Gift / breeding only
+            490 => 2, // Manaphy    — BDSP Pokémon Ranger / event only
+            491 => 2, // Darkrai    — Newmoon Island (Ramanas Park)
+            492 => 2, // Shaymin    — Flower Paradise (Ramanas Park)
+
+            // SwSh-only (not in BDSP Ramanas Park encounter table)
+            716 => 1, // Xerneas    — Crown Tundra DA only (Kalos legend, no BDSP route)
+            717 => 1, // Yveltal    — same
+            807 => 1, // Zeraora    — WC8 HOME Gift only
+
+            // Both routes work — Max Lair eligible AND BDSP Ramanas Park
+            144 => 3, // Articuno (Kanto form 0)
+            145 => 3, // Zapdos (Kanto)
+            146 => 3, // Moltres (Kanto)
+            150 => 3, // Mewtwo
+            243 => 3, // Raikou
+            244 => 3, // Entei
+            245 => 3, // Suicune
+            249 => 3, // Lugia
+            250 => 3, // Ho-Oh
+            377 => 3, // Regirock
+            378 => 3, // Regice
+            379 => 3, // Registeel
+            380 => 3, // Latias
+            381 => 3, // Latios
+            382 => 3, // Kyogre
+            383 => 3, // Groudon
+            384 => 3, // Rayquaza
+            485 => 3, // Heatran
+            486 => 3, // Regigigas
+            487 => 3, // Giratina
+            488 => 3, // Cresselia
+
+            // Default: assume SwSh route (safest — covers most untracked legendaries)
+            _ => 1,
+        };
     }
 }

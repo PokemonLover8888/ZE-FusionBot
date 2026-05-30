@@ -11,7 +11,15 @@ bump `TradeBot.cs` version and cut the release with these as the changelog.
 ## Queued for next release
 
 ### Improvements
-*(none queued)*
+- **Species-aware HOME-uploadable-shiny hint on Z-A Non-Native embeds.** The hint
+  now picks the right destination per species + form:
+  - **SwSh-only** (Galarian birds form 1, Xerneas, Yveltal, Zeraora WC8) → Celebi-SWSH / Jirachi-SWSH
+  - **BDSP-only** (Dialga, Palkia, Phione, Manaphy, Darkrai, Shaymin) → Rayquaza-BDSP / Giratina-BDSP
+  - **Both routes work** (K/G/R, Mewtwo, Lugia, Ho-Oh, the Regis, Latias/Latios, Heatran,
+    Regigigas, Giratina, Cresselia, Kanto birds form 0, legendary beasts) → all four bots listed
+  
+  Previous generic hint sent shiny-Darkrai requesters to SwSh bots that can't deliver them,
+  and didn't tell shiny-K/G/R requesters that BDSP was also an option.
 
 ### Fixes
 *(none queued)*
