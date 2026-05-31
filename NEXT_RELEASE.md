@@ -5,8 +5,8 @@ member-facing feature, a bug fix worth calling out, or a few changes worth bundl
 bump `TradeBot.cs` version and cut the release with these as the changelog.
 
 ## Current Baseline
-- Last release: **v8.0.4** (2026-05-31)
-- Last released to all 12 trade-bot EXEs: **v8.0.4** (deployed 2026-05-31)
+- Last release: **v8.0.5** (2026-05-31)
+- Last released to all 12 trade-bot EXEs: **v8.0.5** (deployed 2026-05-31)
 
 ## Queued for next release
 
@@ -14,9 +14,7 @@ bump `TradeBot.cs` version and cut the release with these as the changelog.
 *(none queued)*
 
 ### Fixes
-- **SwSh Keldeo: full 4-move set + no fake HOME tracker.** Two related issues fixed for Celebi-SWSH / Jirachi-SWSH:
-  - PKHeX's `EncounterStatic8` Keldeo (Crown Tundra Ballimere Lake / Sword of Justice catch) defines only `Aqua Jet` as its catch-default move. ALM was shipping a level-100 Keldeo with one move and three empty slots. Post-ALM PK8 fix fills slots 2-4 with Sacred Sword / Hydro Pump / Swords Dance (all level-up legal, PKHeX-Valid) when the broken catch-default state is detected.
-  - The bot was deliberately injecting a `Random.Shared.NextBytes` HOME tracker into the Mythicals/events list (incl. Keldeo) — fabricated, so HOME would reject on upload, and AutoOT was force-skipped. Added `isSWSHNativeCatch = pkm is PK8 && pkm.MetLocation is > 0 and < 30000` exemption matching the existing BDSP / Z-A native exemptions. SwSh-native fresh catches now ship without a tracker, AutoOT applies normally, member receives Keldeo with their own OT, and HOME assigns a real tracker on first upload from their SwSh save.
+*(none queued)*
 
 ### Internal / chore
 *(none queued)*
