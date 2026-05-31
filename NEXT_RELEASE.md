@@ -11,13 +11,13 @@ bump `TradeBot.cs` version and cut the release with these as the changelog.
 ## Queued for next release
 
 ### Improvements
-*(none queued)*
+- **HOME-Ready module: `lr` / `ll` aliases + revamped UX.** `$lr` (legendary request) and `$ll` (legendary list) added as short aliases for `$hrr` / `$hrl`. `$ll`'s parser now accepts `ll 3 Mewtwo` (page-first) as documented, in addition to legacy `ll Mewtwo 3`. List rows show event + language + game at a glance (`1. Mewtwo • FEB2012 • ENG • SWSH`) instead of raw filenames. `$hr` instructions redesigned as a single gold rich-embed with thumbnail, file count, and command cards.
+- **`SendTradeErrorEmbedAsync`: fair-cooldown reassurance.** Every failed-request embed now includes a 🛡️ "No Cooldown Applied" field telling members that format mistakes / illegal mons / cancelled trades don't burn their daily slot. The bot already gated cooldowns on real `TradeFinished` completion via the trade-bridge — this just surfaces the existing protection to members.
 
 ### Fixes
-*(none queued)*
-
-### Internal / chore
-*(none queued)*
+- **`GetHomeUploadRoute` default → no hint (`""`).** Z-A bot Non-Native embeds were appending a "go to Celebi-SWSH" hint for *every* unlisted species, including regular Charmander / Pikachu / etc. Now only the explicitly-classified shiny-locked legendaries see the redirect; common Pokémon get the plain Non-Native notice with no misleading bot recommendation.
+- **`DetailsExtractor` move-emoji placeholder filter.** Some legacy configs shipped with literal `"?"` or `"??"` strings as `CustomTypeEmojis`/`UsePlusMoveEmoji.EmojiString`, which Discord rendered as `?` next to every move. Added `IsUsableEmojiCode` to ignore all-question-mark strings so the Unicode fallback (🔥💧⚡🌿…) kicks in. Per-bot config files have also been cleaned (separately, not in source control).
+- **Mesprit BDSP met location.** PKHeX's BDSP encounter table lists Mesprit at met location 197 (Valley Windworks), which is geographically wrong — Mesprit's lore-accurate location is Lake Verity. Post-ALM override on PB8 species 481 now patches loc 197 → 325 (Lake Verity / Verity Cavern). Uxie (Lake Acuity, loc 331) and Azelf (Lake Valor, loc 328) were already correct.
 
 ---
 

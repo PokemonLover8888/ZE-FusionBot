@@ -973,6 +973,24 @@ public static class Helpers<T> where T : PKM, new()
         // END OF DITTO METLOCATION FIX
         // ============================================================================
 
+        // ============================================================================
+        // MESPRIT BDSP MET LOCATION FIX
+        // PKHeX's BDSP encounter table lists Mesprit (species 481) at met location 197
+        // (Valley Windworks), which is geographically wrong — Mesprit is encountered at
+        // Lake Verity in the canonical game flow. Patch met location 197 → 325 (Lake
+        // Verity / Verity Cavern) on PB8 Mesprits so members see the correct lore-accurate
+        // location in the trade embed. Uxie (loc 331 = Acuity Cavern) and Azelf
+        // (loc 328 = Valor Cavern) are already correct in PKHeX's data.
+        // ============================================================================
+        if (pkm is PB8 && pkm.Species == 481 && pkm.MetLocation == 197)
+        {
+            pkm.MetLocation = 325; // Lake Verity (Verity Cavern)
+            pkm.RefreshChecksum();
+        }
+        // ============================================================================
+        // END OF MESPRIT METLOCATION FIX
+        // ============================================================================
+
         var spec = GameInfo.Strings.Species[template.Species];
 
         // Apply standard item logic only for non-eggs
@@ -2041,15 +2059,25 @@ public static class Helpers<T> where T : PKM, new()
             : "Unknown";
 
         var embedBuilder = new EmbedBuilder()
-            .WithTitle("Trade Creation Failed.")
-            .WithColor(Color.Red)
+            .WithTitle("Trade Creation Failed")
+            .WithColor(new Color(0xE7, 0x4C, 0x3C)) // muted coral red instead of harsh red
             .AddField("Status", $"Failed to create {spec}.")
             .AddField("Reason", result.Error ?? "Unknown error");
 
         if (!string.IsNullOrEmpty(result.LegalizationHint))
         {
-            _ = embedBuilder.AddField("Hint", result.LegalizationHint);
+            _ = embedBuilder.AddField("💡 Hint", result.LegalizationHint);
         }
+
+        // Fair-cooldown reassurance: the bot only counts trades that actually complete,
+        // so a format mistake / illegal mon / blocked request never burns a daily slot.
+        // Surface that explicitly so members feel safe iterating.
+        embedBuilder.AddField(
+            "🛡️ No Cooldown Applied",
+            "This **does not** count toward your daily trade limit. Mistakes are free — fix it and try again!",
+            inline: false);
+
+        embedBuilder.WithFooter("Free retries on format errors • Cooldowns only apply to completed trades");
 
         string userMention = context.User.Mention;
         string messageContent = $"{userMention}, here's the report for your request:";

@@ -386,9 +386,14 @@ public static class DetailsExtractor<T> where T : PKM, new()
         List<int> movePPs = new() { pk.Move1_PP, pk.Move2_PP, pk.Move3_PP, pk.Move4_PP };
         var moveNames = new List<string>();
 
-        // Prepare type emojis dictionary — use config emojis, fall back to Unicode
+        // Prepare type emojis dictionary — use config emojis, fall back to Unicode.
+        // Filter out placeholder garbage like "?" / "??" that some early configs shipped with —
+        // those render as literal question marks in the embed instead of an emoji.
+        static bool IsUsableEmojiCode(string? s) =>
+            !string.IsNullOrWhiteSpace(s) && !s.All(c => c == '?');
+
         var typeEmojis = SysCord<T>.Runner.Config.Trade.TradeEmbedSettings.CustomTypeEmojis
-            .Where(e => !string.IsNullOrEmpty(e.EmojiCode))
+            .Where(e => IsUsableEmojiCode(e.EmojiCode))
             .ToDictionary(e => (PKHeX.Core.MoveType)e.MoveType, e => $"{e.EmojiCode}");
 
         // Unicode fallback emojis for types without custom emojis configured
@@ -414,10 +419,10 @@ public static class DetailsExtractor<T> where T : PKM, new()
             { PKHeX.Core.MoveType.Fairy, "\ud83e\uddda" },       // 🧚
         };
 
-        // PLUS MOVE emoji
+        // PLUS MOVE emoji — same placeholder-garbage filter
         string plusEmoji = string.Empty;
         var plusEmojiString = SysCord<T>.Runner.Config.Trade.TradeEmbedSettings.UsePlusMoveEmoji?.EmojiString;
-        if (!string.IsNullOrWhiteSpace(plusEmojiString))
+        if (IsUsableEmojiCode(plusEmojiString))
             plusEmoji = $" {plusEmojiString}";
 
         for (int i = 0; i < moves.Length; i++)

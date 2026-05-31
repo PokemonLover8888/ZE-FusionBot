@@ -257,7 +257,7 @@ public static class QueueHelper<T> where T : PKM, new()
                     1 => "\n\n*For a HOME-uploadable shiny, request from **Celebi-SWSH** or **Jirachi-SWSH** instead.*",
                     2 => "\n\n*For a HOME-uploadable shiny, request from **Rayquaza-BDSP** or **Giratina-BDSP** instead.*",
                     3 => "\n\n*For a HOME-uploadable shiny, request from **Celebi-SWSH**, **Jirachi-SWSH**, **Rayquaza-BDSP**, or **Giratina-BDSP** instead.*",
-                    _ => "\n\n*For a HOME-uploadable shiny, request from **Celebi-SWSH** or **Jirachi-SWSH** instead.*",
+                    _ => "", // species we haven't explicitly classified → no redirect hint
                 };
             }
             if (pk is IHomeTrack homeTrack)

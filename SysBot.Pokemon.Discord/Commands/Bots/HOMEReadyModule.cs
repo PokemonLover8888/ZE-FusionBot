@@ -47,49 +47,42 @@ namespace SysBot.Pokemon.Discord.Modules
                 return;
             }
 
-            // Using your modern embed style
-            async Task<IUserMessage> SendBreak(string title, string description)
-            {
-                var embed = new EmbedBuilder()
-                    .WithTitle(title)
-                    .WithDescription(description)
-                    .WithColor(Color.Blue)
-                    .WithImageUrl("https://raw.githubusercontent.com/Secludedly/ZE-FusionBot-Sprite-Images/main/homereadybreak.png");
+            // Count what's available so members see the perk's scale
+            int totalFiles = 0;
+            try { totalFiles = Directory.EnumerateFiles(HOMEFolder).Count(); } catch { }
 
-                return await ReplyAsync(embed: embed.Build());
-            }
+            var embed = new EmbedBuilder()
+                .WithAuthor(a => a
+                    .WithName("PKM Universe — HOME-Ready Module")
+                    .WithIconUrl("https://raw.githubusercontent.com/Secludedly/ZE-FusionBot-Sprite-Images/main/homereadybreak.png"))
+                .WithTitle("✨ Request ANY HOME-Tracked Event Pokémon ✨")
+                .WithDescription(
+                    $"Browse a curated library of **{totalFiles:N0}** event Pokémon with real HOME trackers — " +
+                    "legendaries, mythicals, raid distributions, anniversary events, every regional Mystery Gift. " +
+                    "Pick by index and the bot ships it straight to your save.\n\n" +
+                    "*Note: each event Pokémon has a target game (SwSh / SV / BDSP / LGPE). " +
+                    "The bot tells you which one in the list — use the matching bot to trade for it.*")
+                .WithColor(new Color(0xFF, 0xD7, 0x00)) // PKM Universe gold
+                .WithThumbnailUrl("https://raw.githubusercontent.com/Secludedly/ZE-FusionBot-Sprite-Images/main/homereadybreak.png")
+                .AddField($"🔍  Search — `{Prefix}ll <Pokémon>`",
+                    $"List every available file for a species.\n*Example: `{Prefix}ll Mewtwo`*\n_Alias: `{Prefix}hrl`_",
+                    inline: false)
+                .AddField($"📄  Pages — `{Prefix}ll <page> <Pokémon>`",
+                    $"Jump to a specific results page when there are lots of variants.\n*Example: `{Prefix}ll 3 Charmander`*",
+                    inline: false)
+                .AddField($"🎁  Request — `{Prefix}lr <number>`",
+                    $"Queue the file shown at that index from your most recent list.\n*Example: `{Prefix}lr 682`*\n_Alias: `{Prefix}hrr`_",
+                    inline: false)
+                .WithFooter($"Tip: list first, then request by index. Auto-deletes in 90s.",
+                    "https://raw.githubusercontent.com/Secludedly/ZE-FusionBot-Sprite-Images/main/exclamation.gif")
+                .WithCurrentTimestamp();
 
-            var m0 = await SendBreak(
-                "------- HOME-READY MODULE INSTRUCTIONS -------",
-                "Everything you need to know for the HOME-Ready commands."
-            );
-
-            var m1 = await SendBreak(
-                $"GET LIST — `{Prefix}hrl <Pokemon>`",
-                $"- Searches the entire HOME-Ready module.\n**Example:** `{Prefix}hrl Mewtwo`"
-            );
-
-            var m2 = await SendBreak(
-                $"CHANGE PAGES — `{Prefix}hrl <page>`",
-                $"- Switch between pages, with or without filters.\n**Example:** `{Prefix}hrl 5 Charmander`"
-            );
-
-            var m3 = await SendBreak(
-                $"TRADE A FILE — `{Prefix}hrr <number>`",
-                $"- Trades the Pokémon by its number in the list.\n**Example:** `{Prefix}hrr 682`"
-            );
+            var msg = await ReplyAsync(embed: embed.Build()).ConfigureAwait(false);
 
             _ = Task.Run(async () =>
             {
-                await Task.Delay(60_000);
-                try
-                {
-                    await m0.DeleteAsync();
-                    await m1.DeleteAsync();
-                    await m2.DeleteAsync();
-                    await m3.DeleteAsync();
-                }
-                catch { }
+                await Task.Delay(90_000);
+                try { await msg.DeleteAsync(); } catch { }
             });
         }
 
@@ -97,8 +90,8 @@ namespace SysBot.Pokemon.Discord.Modules
         //  REQUEST
         // ============================================================================
         [Command("homereadyrequest")]
-        [Alias("hrr")]
-        [Summary("Downloads a HOME-ready PKM and queues it for trade.")]
+        [Alias("hrr", "lr")]
+        [Summary("Downloads a HOME-ready PKM and queues it for trade. `lr` short alias = 'legendary request'.")]
         [RequireQueueRole(nameof(DiscordManager.RolesClone))]
         private async Task HOMEReadyRequestAsync(int index)
         {
@@ -206,8 +199,8 @@ namespace SysBot.Pokemon.Discord.Modules
         //  LIST
         // ============================================================================
         [Command("homereadylist")]
-        [Alias("hrl")]
-        [Summary("Lists available HOME-Ready files with filtering + pagination.")]
+        [Alias("hrl", "ll")]
+        [Summary("Lists available HOME-Ready files with filtering + pagination. `ll` short alias = 'legendary list'.")]
         [RequireQueueRole(nameof(DiscordManager.RolesClone))]
         private async Task HOMEListAsync([Remainder] string args = "")
         {
@@ -230,17 +223,30 @@ namespace SysBot.Pokemon.Discord.Modules
                 return;
             }
 
-            // Parse filter + page
+            // Parse filter + page. Accept both orderings:
+            //   `ll Mewtwo`        → filter "Mewtwo", page 1
+            //   `ll 3 Mewtwo`      → page 3, filter "Mewtwo"  (Sec's documented form)
+            //   `ll Mewtwo 3`      → filter "Mewtwo", page 3  (legacy)
+            //   `ll 3`             → page 3, no filter
             var parts = args.Split(' ', StringSplitOptions.RemoveEmptyEntries);
             string filter = "";
             int page = 1;
 
             if (parts.Length > 0)
             {
-                if (int.TryParse(parts.Last(), out int parsedPage))
+                if (parts.Length >= 2 && int.TryParse(parts.First(), out int leadingPage))
                 {
-                    page = parsedPage;
+                    page = leadingPage;
+                    filter = string.Join(" ", parts.Skip(1));
+                }
+                else if (parts.Length >= 2 && int.TryParse(parts.Last(), out int trailingPage))
+                {
+                    page = trailingPage;
                     filter = string.Join(" ", parts.Take(parts.Length - 1));
+                }
+                else if (parts.Length == 1 && int.TryParse(parts[0], out int solePage))
+                {
+                    page = solePage;
                 }
                 else
                 {
@@ -283,23 +289,44 @@ namespace SysBot.Pokemon.Discord.Modules
                  { ".pk9", "SV" }
             };
 
+            // Parse event metadata out of filenames like:
+            //   Mewtwo--FEB2012-F0B42724-ENG.pk8        →  event "FEB2012",  lang "ENG"
+            //   Mewtwo--Giovanni-01E338A7-CHS.pb7        →  event "Giovanni", lang "CHS"
+            //   Pikachu--Movie21-...-ESP.pk8             →  event "Movie21",  lang "ESP"
+            static (string species, string evt, string lang) ParseMeta(string filename)
+            {
+                var nameNoExt = Path.GetFileNameWithoutExtension(filename);
+                var dashSplit = nameNoExt.Split("--", 2);
+                if (dashSplit.Length < 2) return (nameNoExt, "", "");
+                var species = dashSplit[0];
+                var meta = dashSplit[1];
+                var parts = meta.Split('-');
+                if (parts.Length == 0) return (species, "", "");
+                var evt = parts[0];
+                var lang = (parts.Length >= 3 && parts[^1].Length == 3 && parts[^1].All(char.IsLetter))
+                    ? parts[^1].ToUpperInvariant()
+                    : "";
+                return (species, evt, lang);
+            }
+
             foreach (var item in pageItems)
             {
                 var index = files.IndexOf(item) + 1;
-
-                // Get the file extension, trim whitespace, and uppercase it
                 var ext = Path.GetExtension(item)?.Trim().ToUpperInvariant() ?? "";
-
-                // Lookup in dictionary
                 string game = extensionToGame.TryGetValue(ext, out var g) ? g : "Unknown";
+                var (species, evt, lang) = ParseMeta(item);
 
-                // Add embed field
+                // Build a compact, human-readable title:
+                //   "1. Mewtwo • FEB2012 • ENG • SWSH"
+                var titleBits = new List<string> { $"{index}. {species}" };
+                if (!string.IsNullOrEmpty(evt))  titleBits.Add(evt);
+                if (!string.IsNullOrEmpty(lang)) titleBits.Add(lang);
+                titleBits.Add(game);
+                var title = string.Join(" • ", titleBits);
+
                 embed.AddField(
-                    $"{index}. {item}",
-                    $"Use `{Prefix}hrr {index}` to request this Pokémon.\n" +
-                    $"Use `{Prefix}hrv {index}` to view Pokémon details.\n" +
-                    $"Use `{Prefix}hrd {index}` to download this PKM file.\n" +
-                    $"This file is for **{game}**."
+                    title,
+                    $"`{Prefix}lr {index}` — request   ·   `{Prefix}hrv {index}` — view   ·   `{Prefix}hrd {index}` — download"
                 );
             }
 
