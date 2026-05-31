@@ -991,6 +991,31 @@ public static class Helpers<T> where T : PKM, new()
         // END OF MESPRIT METLOCATION FIX
         // ============================================================================
 
+        // ============================================================================
+        // KELDEO SWSH MOVESET FIX
+        // PKHeX's EncounterStatic8 Keldeo (Crown Tundra Ballimere Lake catch) defines
+        // only Aqua Jet as the catch-default move — the other 3 slots ship empty (0),
+        // resulting in a level-100 Keldeo with a single useless move. Members get a
+        // broken-looking Pokémon. Fill the empty slots with a sensible level-up moveset
+        // (Sacred Sword / Hydro Pump / Swords Dance) — all legal for any-level Keldeo.
+        // PK8 (SwSh) only per user request.
+        // ============================================================================
+        if (pkm is PK8 && pkm.Species == 647) // Keldeo
+        {
+            var existing = new ushort[4];
+            pkm.GetMoves(existing.AsSpan());
+            // Apply only when slots 2-4 are blank (the broken catch-default state).
+            if (existing[1] == 0 && existing[2] == 0 && existing[3] == 0)
+            {
+                pkm.SetMoves([453, 533, 56, 14]); // Aqua Jet, Sacred Sword, Hydro Pump, Swords Dance
+                pkm.HealPP();
+                pkm.RefreshChecksum();
+            }
+        }
+        // ============================================================================
+        // END OF KELDEO SWSH MOVESET FIX
+        // ============================================================================
+
         var spec = GameInfo.Strings.Species[template.Species];
 
         // Apply standard item logic only for non-eggs
@@ -1269,7 +1294,12 @@ public static class Helpers<T> where T : PKM, new()
         // Arceus and similar static encounters don't need a HOME tracker; adding one
         // creates a contradictory file (claims native catch + HOME-transferred).
         bool isBDSPNativeCatch = pkm is PB8 && pkm.MetLocation is > 0 and < 30000;
-        if (la.Valid && pkm is IHomeTrack { HasTracker: false } homeTrack && !isZANativeFreshCatch && !isBDSPNativeCatch)
+        // Same exemption for SwSh native catches — e.g. Crown Tundra Keldeo at Ballimere Lake
+        // (EncounterStatic8, Sword of Justice quest). Member catches it themselves, no HOME
+        // tracker exists. Adding a fabricated random one breaks AutoOT (forces it off) and
+        // HOME's server-side validation rejects on upload because the tracker isn't registered.
+        bool isSWSHNativeCatch = pkm is PK8 && pkm.MetLocation is > 0 and < 30000;
+        if (la.Valid && pkm is IHomeTrack { HasTracker: false } homeTrack && !isZANativeFreshCatch && !isBDSPNativeCatch && !isSWSHNativeCatch)
         {
             // Mythicals/events typically distributed via HOME - need a HOME tracker for legality
             ushort[] homeTrackedSpecies =
