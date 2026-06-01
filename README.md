@@ -116,24 +116,7 @@ These are the enhancements layered on top of ZE-FusionBot for the PKM Universe c
 - Frameless, minimal, modern design — drag by the top panel.
 - Animated glow + progress bar in the controller during trades.
 
----
-
-## 🖼️ GUI Previews
-
-> 🎬 *PKM Universe gold-UI captures are being recorded — previews below reflect the underlying ZE-FusionBot GUI this fork is built on and will be refreshed.*
-
-<p align="center">
-    <img src="https://raw.githubusercontent.com/PokemonLover8888/ZE-FusionBot/main/.readme/README_GeneralOverlook2.gif" style="max-width: 100%; height: auto;">
-</p>
-<p align="center">
-    <img src="https://raw.githubusercontent.com/PokemonLover8888/ZE-FusionBot/main/.readme/README_Environment2.gif" style="max-width: 100%; height: auto;">
-</p>
-<p align="center">
-    <img src="https://raw.githubusercontent.com/PokemonLover8888/ZE-FusionBot/main/.readme/README_Themes2.gif" style="max-width: 100%; height: auto;">
-</p>
-<p align="center">
-    <img src="https://raw.githubusercontent.com/PokemonLover8888/ZE-FusionBot/main/.readme/README_Starting2.gif" style="max-width: 100%; height: auto;">
-</p>
+> 🎬 *PKM Universe gold-UI screenshots & GIFs coming soon.*
 
 ---
 
