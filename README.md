@@ -7,7 +7,7 @@
 </p>
 
 <h3 align="center">
-  🌐 Visit <a href="https://pkm-universe.com">pkm-universe.com</a> to join the community!
+  🌐 Visit <a href="https://creator.pkm-universe.com/">creator.pkm-universe.com</a> to join the community!
 </h3>
 
 > ⚠️ **Font Notice:** If the program's fonts are not displaying properly, download them [here](https://github.com/PokemonLover8888/ZE-FusionBot/blob/main/.extra/Fonts.7z) and install them on your machine.
