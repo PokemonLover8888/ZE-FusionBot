@@ -1,244 +1,139 @@
 <h1 align="center">
-    <a href="https://amplication.com/#gh-light-mode-only">
-    <img src="https://i.imgur.com/0HWW0te.png">
-    </a>
-    <a href="https://amplication.com/#gh-dark-mode-only">
-    <img src="https://i.imgur.com/0HWW0te.png">
-    </a>
+  ✨ PKM Universe Reborn — Trade Bot ✨
 </h1>
 
-> ⚠️ **Font Notice:** If the program's fonts are not displaying properly for you, download them [here](https://github.com/Secludedly/ZE-FusionBot/blob/main/.extra/Fonts.7z) and install them on your machine.
+<p align="center">
+  <i>A premium, gold-themed SysBot.NET fork powering the PKM Universe Reborn community — full Pokémon HOME-compatible trading across LGPE, SWSH, BDSP, PLA, SV, and Legends: Z-A.</i>
+</p>
 
-<p align="center">
-  <i>A community-driven and inspired SysBot.NET project with the most beautiful GUI that unites code from everyone, supporting LGPE, SWSH, BDSP, PLA, SV, and PLZA!</i>
-</p>
 <h3 align="center">
-  Visit <a href="https://FreeMons.Org">FreeMons.Org</a> to join Zeraora's Emporium!
+  🌐 Visit <a href="https://pkm-universe.com">pkm-universe.com</a> to join the community!
 </h3>
-<p align="center">
-    <img src="https://visitor-badge.laobi.icu/badge?page_id=Secludedly.ZE-FusionBot" alt="Visitors">
-</p>
-<h4 align="center">
-  <a href="https://FreeMons.Org">
-    <img src="https://i.imgur.com/wbWzI2u.png" alt="discord" style="height: 20px;">
-  </a>
-  <a href="https://ko-fi.com/secludedly">
-    <img src="https://i.imgur.com/nDO4SgL.png" alt="ko-fi" style="height: 20px;">
-  </a>
-</h4>
+
+> ⚠️ **Font Notice:** If the program's fonts are not displaying properly, download them [here](https://github.com/PokemonLover8888/ZE-FusionBot/blob/main/.extra/Fonts.7z) and install them on your machine.
+
+> 🧬 **Heritage:** PKM Universe Reborn's bot is a branded fork of **[Secludedly's ZE-FusionBot](https://github.com/Secludedly/ZE-FusionBot)**, which itself builds on **[hexbyt3's PokeBot](https://github.com/hexbyt3/PokeBot)** and the wider SysBot.NET ecosystem. Full credits below — none of this exists without them.
 
 ---
 
 ## 🚀 Introduction
 
-`ZE FusionBot` is a powerful and open-source SysBot.NET fork, initially tailored for the Discord server [Zeraora's Emporium](https://FreeMons.Org). While originally built for internal server use, it has transformed into a beautiful, community-powered GUI with dozens of integrated forks and unique enhancements, catering to every Nintendo Switch Pokémon game.
+This is the trade-bot engine behind **PKM Universe Reborn**, a community running a fleet of themed Pokémon trade bots (Celebi-SWSH, Jirachi-SWSH, Mew-SV, Meloetta-SV, Rayquaza-BDSP, Giratina-BDSP, Flareon-LGPE, plus the Legends: Z-A lineup and more). It pairs a polished gold WinForms GUI with a deep, HOME-aware legality pipeline so members get clean, HOME-uploadable Pokémon every time.
+
+Built on top of Secludedly's ZE-FusionBot, this fork adds PKM Universe branding, a curated HOME-Ready event library, smart fair-cooldowns, species-aware HOME-upload guidance, and a steady stream of per-game legality fixes.
 
 ---
-<p align="center">
-    <img src="https://i.imgur.com/zJF8VmN.gif" style="max-width: 100%; height: auto;">
-</p>
 
 ## 🧬 Community Roots & Inspirations
 
-> **ZE FusionBot is a fusion by design — built from years of shared ideas, forks, experiments, and respect for the SysBot.NET ecosystem.**
+> **This bot is a fusion by design — built from years of shared ideas, forks, experiments, and respect for the SysBot.NET ecosystem.**
 
-ZE FusionBot was created, inspired, and upgraded through time, in pieces, through a collaboration of multiple developers of all skill levels with bright ideas and a hobby. There's many I know, and many I don't know, but I have respect and appreciation for them all. If they didn't inspire or help, simply diving into their code and learning C# over the years through their contributions helped me get to this point to continue to refine ZE FusionBot and is also what allowed this project to grow into one of - if not *the best* SysBot program to date, in large to **[@hexbyt3's](https://github.com/hexbyt3)** **[PokeBot](https://github.com/hexbyt3/PokeBot)**, another contender as *the best* SysBot.
-
-The projects below represent **the strongest influences** in the SysBot.NET space and the inspiration behind calling this a **Fusion** bot.
+PKM Universe Reborn's bot stands directly on **[Secludedly's ZE-FusionBot](https://github.com/Secludedly/ZE-FusionBot)** — the immediate parent of this fork — which in turn was created, inspired, and upgraded over years through the collaboration of many developers. The projects below represent the strongest influences in the SysBot.NET space and the inspiration behind calling this a **Fusion** bot.
 
 <details>
 <summary><strong>🧬 Click to view credits & inspirations</strong></summary><br />
 
+### 🧬 Direct Upstream
+
+- **[ZE-FusionBot](https://github.com/Secludedly/ZE-FusionBot)**
+  Created by **[@Secludedly](https://github.com/Secludedly)** — the direct parent of this fork.
+  *The entire GUI, module set, and legality foundation PKM Universe builds on.*
+
 ### 🧬 Foundational Projects
 
-- **[SysBot.NET](https://github.com/kwsch/SysBot.NET)**  
-  Created by **[@kwsch](https://github.com/kwsch)** — also the creator of PKHeX.  
+- **[SysBot.NET](https://github.com/kwsch/SysBot.NET)**
+  Created by **[@kwsch](https://github.com/kwsch)** — also the creator of PKHeX.
   *The origin of everything.*
 
-- **[ForkBot.NET](https://github.com/Koi-3088/ForkBot.NET)**  
-  Developed by **[@Koi-3088](https://github.com/Koi-3088)**.  
+- **[ForkBot.NET](https://github.com/Koi-3088/ForkBot.NET)**
+  Developed by **[@Koi-3088](https://github.com/Koi-3088)**.
   One of the earliest and most influential forks. TradeCord will never be forgotten.
-  Somewhat of a friend for a while, but it's been many years, yet his talent had me learn so much.
 
-- **[SysBot.NET (berichan fork)](https://github.com/berichan/SysBot.NET)**  
+- **[SysBot.NET (berichan fork)](https://github.com/berichan/SysBot.NET)**
   An insightful and clever fork by **[@berichan](https://github.com/berichan)** that helped shape many later ideas.
-  Many years ago, I'd take and modify beri's work to learn more about C#.
 
-- **[SysBot.NET (Lusamine fork)](https://github.com/Lusamine/SysBot.NET)**  
+- **[SysBot.NET (Lusamine fork)](https://github.com/Lusamine/SysBot.NET)**
   A respected fork that stayed close to the original vision, maintained by **[@Lusamine](https://github.com/Lusamine)**.
 
-- **[SysBot.NET (santacrab fork)](https://github.com/santacrab2/SysBot.NET)**  
-  A long-followed fork by **[@santacrab2](https://github.com/santacrab2)** — a brilliant developer and dear local friend.
+- **[SysBot.NET (santacrab fork)](https://github.com/santacrab2/SysBot.NET)**
+  A long-followed fork by **[@santacrab2](https://github.com/santacrab2)**.
 
 ---
 
 ### 🔧 Evolutionary & Community-Driven Bots
 
-- **[MergeBot](https://github.com/Paschar1/MergeBot)**  
-  Originally created by **[@bakakaito](https://github.com/bakakaito)** (now offline), possibly preserved by **[@Paschar1](https://github.com/Paschar1)**.  
-  One of the first major user-driven evolutions of SysBot.
+- **[PokeBot](https://github.com/hexbyt3/PokeBot)**
+  Created by **[@hexbyt3](https://github.com/hexbyt3)** — the **primary foundation of ZE-FusionBot**, and therefore of this fork. Much of the structure, philosophy, and stability originates here.
 
-- **[PokeBot](https://github.com/hexbyt3/PokeBot)**  
-  Created by **[@hexbyt3](https://github.com/hexbyt3)**, a brilliant friend of mine — and the **primary foundation of ZE FusionBot**.  
-  Much of FusionBot’s structure, philosophy, and stability originates here, alongside deep collaboration and shared ideas between repos.
+- **[MergeBot](https://github.com/Paschar1/MergeBot)**
+  Originally created by **[@bakakaito](https://github.com/bakakaito)**, possibly preserved by **[@Paschar1](https://github.com/Paschar1)**.
 
 ---
 
 ### 🚀 Additional Inspirations
 
 - **[SysBot.NET (easyworld fork)](https://github.com/easyworld/SysBot.NET)** — by **[@easyworld](https://github.com/easyworld)**
-A fork I've followed for some time that's given me inspiration in the past
 - **[ManuBot.NET](https://github.com/Manu098vm/ManuBot.NET)** — by **[@Manu098vm](https://github.com/Manu098vm)**
-A fork I've been following for update inspiration with great C# knowledge
 - **[ManuBot.NET (9B1td0 fork)](https://github.com/9B1td0/ManuBot.NET)** — by **[@9B1td0](https://github.com/9B1td0)**
-I believe this is a fork of ManuBot.NET but seems almost collaborated with the original.
 - **[DudeBot.NET](https://github.com/Havokx89/DudeBot.NET)** — by **[@Havokx89](https://github.com/Havokx89)**
-A fun and fused iteration combining a lot of ZE FusionBot that I follow for various integration ideas.
 - **[ZenBot.NET](https://github.com/Omni-KingZeno/ZenBot.NET)** — by **[@Omni-KingZeno](https://github.com/Omni-KingZeno)**
-A fork of ManuBot.NET that I follow and quite enjoy getting inspiration from. Plus, great bot name and username. I'm a DBtard.
 - **[TradeBot](https://github.com/jonklee99/Tradebot)** — by **[@jonklee99](https://github.com/jonklee99)** with **[@joseph11024](https://github.com/joseph11024)**
-Created by a good friend that tends to use their own ideas that I've happily borrowed from before.
-- **[ZE-FusionBot (Taku1991 fork)](https://github.com/Taku1991/ZE-FusionBot)** — by **[@Taku1991](https://github.com/Taku1991)**.  
-An independently evolved fork that shares ideas, structure, and inspiration within the ZE FusionBot ecosystem that I myself have proudly borrowed from.
-
 
 </details>
 
 ---
 
-## ✨ Highlights
+## ✨ PKM Universe Highlights
+
+These are the enhancements layered on top of ZE-FusionBot for the PKM Universe community:
+
+- **🏠 HOME-Ready Event Library** — request from a curated library of 13,000+ HOME-tracked event Pokémon with `ll <species>` (list) and `lr <number>` (request). Aliases for the classic `hrl` / `hrr`.
+- **🛡️ Smart Fair-Cooldowns** — cooldowns only apply to *completed* trades. Format mistakes, illegal sets, and cancelled trades are free retries, with a clear "No Cooldown Applied" banner on every failed request.
+- **🧭 Species-aware HOME guidance** — when a Z-A bot ships a non-native shiny that can't enter HOME, the embed points members to the right SwSh / BDSP bot for a HOME-uploadable version.
+- **🎯 Clean HOME-uploadable legendaries** — Max Lair (SwSh) and Ramanas Park (BDSP) `tracker=0` generation so members' shinies upload to HOME and get a real tracker assigned.
+- **🩹 Per-game legality fixes** — correct met locations (Mesprit → Lake Verity), full movesets (Keldeo), proper move-type / gender emoji rendering, and more.
+- **🔱 Branded fleet** — themed bots per game, gold UI, gold embeds, region-routed raid posting.
+
+### Inherited ZE-FusionBot Features
 
 - One-click Game Restart, Hot Reload, and Updater.
-- Support for batch trades via Showdown format or .zip archives.
-- Mystery Pokémon and Eggs, Battle-Ready, HOME-Ready, and Event Pokémon trading modules.
+- Batch trades via Showdown format or `.zip` archives.
+- Mystery Pokémon & Eggs, Battle-Ready, HOME-Ready, and Event trading modules.
 - Full GUI control for SysDVR and Switch Remote for PC integration.
 - Smart Auto-Correct and Auto-Legalization.
-- DM embeds with GIFs, Channel Status notifications, Announcement System, Keyword Response.
-- Built-in metrics: Queue tracking, trade counters, medal system.
-- Multi-Language request support.
-- Live/Real-time log searches.
-- Read user DMs sent to the bot.
+- DM embeds with GIFs, Channel Status notifications, Announcement System.
+- Built-in metrics: queue tracking, trade counters, medal system.
+- Multi-language request support and live/real-time log searches.
 
 ---
 
 ## 🖥️ GUI Features
 
-- Animated, hover-responsive panel buttons for Bots / Hub / Logs.
-- Color-coded UI themes: blue-purple primary, themed subpanels.
-- Fully redesigned icons, fonts, buttons, and layout.
-- Bot controller with sections for Address, Status, Trade Type, and Log time.
-- No native window titlebars — drag by top panel. Minimal, modern design.
-- Animated glow around controller buttons to indicate their use.
-- Progress bar in the controller that shows a visual glow during the trade process.
-
+- Gold-themed, hover-responsive panel buttons for Bots / Hub / Logs.
+- Custom form-builder configuration UI with drill-down and search.
+- Real-time dashboard with timer ring, sparkline, and live trade stats.
+- Bot controller with Address, Status, Trade Type, and Log time sections.
+- Frameless, minimal, modern design — drag by the top panel.
+- Animated glow + progress bar in the controller during trades.
 
 ---
 
 ## 🖼️ GUI Previews
 
-<p align="center">
-    <img src="https://i.imgur.com/VZ2oeOy.gif" style="max-width: 100%; height: auto;">
-</p>
-<p align="center">
-    <img src="https://raw.githubusercontent.com/Secludedly/ZE-FusionBot/main/.readme/README_GeneralOverlook2.gif" style="max-width: 100%; height: auto;">
-</p>
-<p align="center">
-    <img src="https://raw.githubusercontent.com/Secludedly/ZE-FusionBot/main/.readme/README_Environment2.gif" style="max-width: 100%; height: auto;">
-</p>
-<p align="center">
-    <img src="https://raw.githubusercontent.com/Secludedly/ZE-FusionBot/main/.readme/README_Reload2.gif" style="max-width: 100%; height: auto;">
-</p>
-<p align="center">
-    <img src="https://raw.githubusercontent.com/Secludedly/ZE-FusionBot/main/.readme/README_Themes2.gif" style="max-width: 100%; height: auto;">
-</p>
-<p align="center">
-    <img src="https://raw.githubusercontent.com/Secludedly/ZE-FusionBot/main/.readme/README_Starting2.gif" style="max-width: 100%; height: auto;">
-</p>
-<p align="center">
-    <img src="https://raw.githubusercontent.com/Secludedly/ZE-FusionBot/main/.readme/README_Update2.gif" style="max-width: 100%; height: auto;">
-</p>
-
----
-
-## 🎥 GIF Previews
-
-<details open>
-<summary><strong>🎮 GIFS</strong></summary><br />
-
-<div align="center">
-
-<!-- Row 1 -->
-<table>
-  <tr>
-    <td align="center" width="50%">
-      <strong>Switch Remote for PC</strong><br />
-      <img src="https://raw.githubusercontent.com/Secludedly/ZE-FusionBot/main/.readme/README_SwitchRemoteForPC.gif" alt="Switch Remote for PC" width="100%" />
-    </td>
-    <td align="center" width="50%">
-      <strong>SysDVR</strong><br />
-      <img src="https://raw.githubusercontent.com/Secludedly/ZE-FusionBot/main/.readme/README_SysDVR.gif" alt="SysDVR" width="100%" />
-    </td>
-  </tr>
-
-<!-- Row 2 -->
-  <tr>
-    <td align="center" width="50%">
-      <strong>Batch Trading Archives</strong><br />
-      <img src="https://raw.githubusercontent.com/Secludedly/ZE-FusionBot/main/.readme/README_BatchArchive.gif" alt="Batch Trading Archives" width="100%" />
-    </td>
-    <td align="center" width="50%">
-      <strong>Batch Trading Showdown</strong><br />
-      <img src="https://raw.githubusercontent.com/Secludedly/ZE-FusionBot/main/.readme/README_BatchShowdown.gif" alt="Batch Trading Showdown" width="100%" />
-    </td>
-  </tr>
-
-<!-- Row 3 -->
-  <tr>
-    <td align="center" width="50%">
-      <strong>Peek & Video Feature</strong><br />
-      <img src="https://raw.githubusercontent.com/Secludedly/ZE-FusionBot/main/.readme/README_Peek+Video.gif" alt="Peek & Video Feature" width="100%" />
-    </td>
-    <td align="center" width="50%">
-      <strong>Mystery Mon</strong><br />
-      <img src="https://raw.githubusercontent.com/Secludedly/ZE-FusionBot/main/.readme/README_MysteryMon.gif" alt="Mystery Mon" width="100%" />
-    </td>
-  </tr>
-</table>
-
-</div>
-
-</details>
-
----
-
-## 🖼️ Image Previews
-
-<details open>
-<summary>
- IMAGES
-</summary> <br />
+> 🎬 *PKM Universe gold-UI captures are being recorded — previews below reflect the underlying ZE-FusionBot GUI this fork is built on and will be refreshed.*
 
 <p align="center">
-    <img width="49%" src="https://i.imgur.com/hsh43rt.png" alt="img1"/>
-&nbsp;
-    <img width="49%" src="https://i.imgur.com/lWkBXLi.png" alt="img2"/>
+    <img src="https://raw.githubusercontent.com/PokemonLover8888/ZE-FusionBot/main/.readme/README_GeneralOverlook2.gif" style="max-width: 100%; height: auto;">
 </p>
 <p align="center">
-    <img width="49%" src="https://i.imgur.com/pMdWfcT.png" alt="img3"/>
-&nbsp;
-    <img width="49%" src="https://i.imgur.com/rdOq4M7.png" alt="img4"/>
+    <img src="https://raw.githubusercontent.com/PokemonLover8888/ZE-FusionBot/main/.readme/README_Environment2.gif" style="max-width: 100%; height: auto;">
 </p>
 <p align="center">
-    <img width="49%" src="https://i.imgur.com/eWmTGCI.png" alt="img5"/>
-&nbsp;
-    <img width="49%" src="https://i.imgur.com/SPe1iOa.png" alt="img6"/>
+    <img src="https://raw.githubusercontent.com/PokemonLover8888/ZE-FusionBot/main/.readme/README_Themes2.gif" style="max-width: 100%; height: auto;">
 </p>
 <p align="center">
-    <img width="49%" src="https://i.imgur.com/Xn1IMJ6.png" alt="img7"/>
-&nbsp;
-	<img width="49%" src="https://i.imgur.com/N9n5jva.jpeg" alt="img8"/>
+    <img src="https://raw.githubusercontent.com/PokemonLover8888/ZE-FusionBot/main/.readme/README_Starting2.gif" style="max-width: 100%; height: auto;">
 </p>
-</details>
 
 ---
 
@@ -266,6 +161,18 @@ An independently evolved fork that shares ideas, structure, and inspiration with
 | `deleteTradeCode` | dtc | Deletes the stored Link Trade Code for the user. | `dtc` | Everyone |
 | `changeTradeCode` | ctc | Change your stored Link Trade Code. | `ctc 12345678` | Everyone |
 
+## 🏠 HOME-Ready Event Library
+
+| Command | Aliases | Summary | Example | Permission |
+|---------|---------|---------|---------|------------|
+| `homeReady` | hr | Displays instructions for HOME-Ready trading. | `homeReady` | Everyone |
+| `homeReadylist` | hrl, **ll** | Lists available HOME-Ready event files (by event + language + game). | `ll Mewtwo` / `ll 3 Mewtwo` | Everyone |
+| `homeReadyRequest` | hrr, **lr** | Request a HOME-Ready file by its list number. | `lr 3` | Everyone |
+| `homeReadyView` | hrv | View the Showdown set of a HOME-Ready file. | `hrv 3` | Everyone |
+| `homeReadyDownload` | hrd | Download the raw PKM file. | `hrd 3` | Everyone |
+
+> 🔑 **HOME-Ready files keep their original event OT** (e.g. `HOME`, `GF`, `PCNYc`) — AutoOT is intentionally not applied, which is what keeps the HOME tracker legitimate. Use the bot matching your save (SWSH / SV / BDSP / LGPE).
+
 ## 🎯 Advanced Trade Features
 
 | Command | Aliases | Summary | Example | Permission |
@@ -281,9 +188,6 @@ An independently evolved fork that shares ideas, structure, and inspiration with
 | `mysteryegg` | me | Get a random shiny 6IV egg. | `mysteryegg` | Everyone |
 | `mysterymon` | mm, mystery, surprise | Get a fully random Pokémon. | `mysterymon` | Everyone |
 | `randomTeam` | rt, RandomTeam, Rt | Generates a random team. | `randomTeam` | Everyone |
-| `homeReady` | hr | Displays instructions for HOME-ready trading. | `homeReady` | Everyone |
-| `homeReadyRequest` | hrr | Downloads HOME-ready files and adds to trade queue. | `homeReadyRequest <number>` | Everyone |
-| `homeReadylist` | hrl | Lists available HOME-ready files. | `homeReadylist` | Everyone |
 | `specialRequest` | sr, srp | Lists Wondercard events or requests specific ones. | `srp <game> <page2>` | Everyone |
 | `getEvent` | ge, gep | Downloads the requested event as a PKM file. | `getEvent <eventID>` | Everyone |
 
@@ -308,10 +212,6 @@ An independently evolved fork that shares ideas, structure, and inspiration with
 | `queueToggle` | qt | Enable/disable queue joining. | `qt` | Sudo, Owner |
 | `queueList` | ql | DM the full queue list. | `ql` | Sudo, Owner |
 | `tradeList` | tl | Show users currently in trade queue. | `tl` | Sudo, Owner |
-| `fixOTList` | fl, fq | Prints the users in the FixOT queue. | `fixOTList` | Sudo, Owner |
-| `cloneList` | cl, cq | Prints the users in the Clone queue. | `cloneList` | Sudo, Owner |
-| `dumplist` | dl, dq | Prints the users in the Dump queue. | `dumplist` | Sudo, Owner |
-| `seedList` | sl, scq, seedCheckQueue, seedQueue, seedList | Show seed check queue users. | `seedList` | Sudo, Owner |
 
 ## 🛠 Admin Tools
 
@@ -319,35 +219,21 @@ An independently evolved fork that shares ideas, structure, and inspiration with
 |---------|---------|---------|---------|------------|
 | `addSudo` | — | Add a user to global sudo. | `addSudo <ID>` | Owner |
 | `removeSudo` | — | Remove a user from global sudo. | `removeSudo <ID>` | Owner |
-| `blacklistServer` | bls | Adds a server ID to the server blacklist. | `blacklistServer <ID>` | Sudo, Owner |
-| `unblacklistServer` | ubls | Removes a server ID from the server blacklist. | `unblacklistServer <ID>` | Sudo, Owner |
 | `blacklist` | — | Blacklist a Discord user. | `blacklist @user` | Sudo, Owner |
 | `unblacklist` | — | Remove a user from blacklist. | `unblacklist @user` | Sudo, Owner |
-| `blacklistId` | — | Blacklist Discord user IDs. | `blacklistId <ID>` | Sudo, Owner |
-| `unBlacklistId` | — | Unblacklist Discord user IDs. | `unBlacklistId <ID>` | Sudo, Owner |
-| `blacklistComment` | — | Adds comment for blacklisted user. | `blacklistcomment <ID> <msg>` | Sudo, Owner |
 | `banTrade` | bant | Ban a user from trading with reason. | `bant @user <reason>` | Sudo, Owner |
-| `banID` | — | Ban an online user ID. | `banID <ID>` | Sudo, Owner |
-| `unbanID` | — | Unban an online user ID. | `unbanID <ID>` | Sudo, Owner |
-| `bannedIDComment` | — | Adds a comment for banned ID. | `bannedIDcomment <ID> <msg>` | Sudo, Owner |
-| `bannedIDSummary` | printBannedID, bannedIDPrint | Show list of banned IDs. | `bannedIDSummary` | Sudo, Owner |
-| `blacklistSummary` | printBlacklist, blacklistPrint | Show list of blacklisted users. | `blacklistSummary` | Sudo, Owner |
+| `blacklistServer` | bls | Adds a server ID to the server blacklist. | `blacklistServer <ID>` | Sudo, Owner |
 
 ## 🎮 Switch Control
 
 | Command | Aliases | Summary | Example | Permission |
 |---------|---------|---------|---------|------------|
-| `click` | — | Click a button on the Switch. | `click <IP> <Button>` | Sudo, Owner |
-| `setStick` | — | Move stick to coordinates. | `setStick <IP> <Coords>` | Sudo, Owner |
 | `setScreenOn` | screenOn, scrOn | Turn on screen. | `setScreenOn` | Sudo, Owner |
 | `setScreenOff` | screenOff, scrOff | Turn off screen. | `setScreenOff` | Sudo, Owner |
-| `setScreenOnAll` | screenOnAll, scrOnAll | Turn on screen for all bots. | `setScreenOnAll` | Sudo, Owner |
-| `setScreenOffAll` | screenOffAll, scrOffAll | Turn off screen for all bots. | `setScreenOffAll` | Sudo, Owner |
 | `peek` | repeek | Take and send a screenshot. | `peek` | Sudo, Owner |
 | `video` | Video | Record a GIF from the Switch. | `video` | Sudo, Owner |
-| `startSysdvr` | dvrstart, startdvr, sysdvrstart, dvr, stream | Start SysDVR streaming. | `startSysdvr` | Owner |
-| `sysDvr` | — | Show instructions for SysDVR. | `sysDvr` | Owner |
-| `startController` | controllerstart, startcontrol, controlstart, startremote, remotestart, sbr, controller | Start Switch Remote controller. | `startController` | Owner |
+| `startSysdvr` | dvr, stream | Start SysDVR streaming. | `startSysdvr` | Owner |
+| `startController` | controller, sbr | Start Switch Remote controller. | `startController` | Owner |
 
 ## 📡 Bot Management
 
@@ -356,38 +242,11 @@ An independently evolved fork that shares ideas, structure, and inspiration with
 | `ping` | — | Ping the bot to check if it's running. | `ping` | Sudo, Owner |
 | `help` | — | Show all commands. | `help` | Everyone |
 | `info` | about, whoami, owner, bot | Show bot information. | `info` | Everyone |
-| `botStatus` | — | Get bot status via logs. | `botStatus` | Sudo, Owner |
 | `botStart` | — | Start the bot. | `botStart` | Sudo, Owner |
 | `botStop` | — | Stop the bot. | `botStop` | Sudo, Owner |
-| `botIdle` | botPause, idle | Pause the bot. | `botIdle` | Sudo, Owner |
-| `botChange` | — | Change the bot routine. | `botChange <FlexTrade>` | Sudo, Owner |
 | `botRestart` | — | Restart the bot(s). | `botRestart` | Sudo, Owner |
 | `status` | stats | Get the bot environment status. | `status` | Sudo, Owner |
 | `kill` | shutdown | Shutdown the bot. | `kill` | Owner |
-
-## 📢 Echo & Logging
-
-| Command | Aliases | Summary | Example | Permission |
-|---------|---------|---------|---------|------------|
-| `announce` | Announce | Send an announcement to Echo channels. | `announce <msg>` | Owner |
-| `dm` | - | Send a DM to a user as the bot. | `dm @user <msg>` | Owner |
-| `addEmbedChannel` | aec | Assign a channel for bot embeds. | `addEmbedChannel #channel` | Sudo, Owner |
-| `echoInfo` | — | Dump echo message settings. | `echoInfo` | Sudo, Owner |
-| `echoClear` | rec | Clear echo settings for current channel. | `echoClear` | Sudo, Owner |
-| `echoClearAll` | raec | Clear echo settings from all channels. | `echoClearAll` | Sudo, Owner |
-| `logHere` | — | Log to current channel. | `logHere` | Sudo, Owner |
-| `logClearAll` | — | Clear all log settings. | `logClearAll` | Sudo, Owner |
-| `logClear` | — | Clear log settings for current channel. | `logClear` | Sudo, Owner |
-| `logInfo` | — | Dump logging settings. | `logInfo` | Sudo, Owner |
-
-## 🔐 Permissions & Guild
-
-| Command | Aliases | Summary | Example | Permission |
-|---------|---------|---------|---------|------------|
-| `listGuilds` | lg, servers, listservers | List all guilds the bot is in. | `listGuilds` | Sudo, Owner |
-| `leave` | bye | Leave current server. | `leave` | Sudo, Owner |
-| `leaveGuild` | lg | Leave a guild by ID. | `leaveGuild <ID>` | Sudo, Owner |
-| `leaveAll` | — | Leave all servers. | `leaveAll` | Sudo, Owner |
 
 ## 🎲 Misc & Fun
 
@@ -403,47 +262,11 @@ An independently evolved fork that shares ideas, structure, and inspiration with
 - Paste a PKM in chat to receive info + legal formats.
 - Thank the bot — it might reply!
 
-
-
-## 📝 Batch Commands to Showdown Format
-
-`ZE FusionBot` supports converting batch commands from Discord messages into official Showdown Set formats. This allows easy bulk Pokémon trading with full customization of stats, moves, ribbons, and other metadata.
-
-### Supported Batch Command Mappings
-
-| Batch Command | Showdown Format Equivalent | Notes |
-|---------------|---------------------------|-------|
-| `.Scale=` | `Scale:` or `Size:` | Accepts keywords (XXXS, XXS, XS, S, AV, L, XL, XXL, XXXL) or numeric values 1-255. |
-| `.WeightScalar=` | `Weight:` | Accepts keywords (XS, S, AV, L, XL) or numeric values 1-255. |
-| `.HeightScalar=` | `Height:` | Accepts keywords (XS, S, AV, L, XL) or numeric values 1-255. |
-| `.OriginalTrainerFriendship=` | `OT Friendship:` | Value 1–255. |
-| `.HandlingTrainerFriendship=` | `HT Friendship:` | Value 1–255. |
-| `.MetDate=` | `Met Date:` | Supports flexible date formats. |
-| `.StatNature=` | `Stat Nature:` | Accepts a Nature keyword. |
-| `~=Version=` | `Game:` or `Version:` | Supports full game names or abbreviations. |
-| `.MetLocation=` | `Met Location:` | [Numeric IDs](https://github.com/Secludedly/ZE-FusionBot?tab=readme-ov-file#-met-location-reference) & [Location names](https://github.com/Secludedly/ZE-FusionBot/blob/f72fded7b30c1c6a03bd1cf22f3366f88ec9b257/SysBot.Pokemon/Helpers/BatchCommandNormalizer.cs#L780) supported. |
-| `.HyperTrainFlags=` | `HyperTrain:` | True / False. |
-| `.HT_[STAT]=` | `HT:` | Supports HP, Atk, Def, SpA, SpD, Spe. |
-| `.Moves=` | `Moves:` | “Random” generates random moves. |
-| `.RelearnMoves=` | `Relearn Moves:` | “All” or “None” accepted. |
-| `.Ribbons=` | `Ribbons:` | “All” or “None” supported. |
-| `.RibbonMark[mark]=True` | `Mark:` | Mark names without spaces (e.g., BestFriends). |
-| `.Ribbon[name]=True` | `Ribbon:` | Ribbon names without spaces (e.g., BattleChampion). |
-| `.SetEVs=` | `Set EVs:` | Accepts `Random`, or `Suggest`. |
-| `.SetIVs=` | `Set IVs:` | Accepts `Random`, or presets like `1IV`–`6IV`. |
-| `.GV_[STAT]=` | `GVs:` | Supports HP, Atk, Def, SpA, SpD, Spe. |
-| `.Marking[type]=` | `Markings:` | Diamond, Heart, Square, Star, Triangle, Circle in Red or Blue `Markings: Diamond=Red / Circle=Blue` etc. |
-| `.Characteristic=` | `Characteristic:` | Type out a [characteristic](https://github.com/Secludedly/ZE-FusionBot?tab=readme-ov-file#-characteristic-reference). |
-| `.Nickname=` | `Nickname:` | Write "Suggest" for a random nickname pulled from code dictionary. |
-
 ---
 
 ## 🧭 Slash Command Support
 
-ZE FusionBot supports **modern Discord Slash Commands** for fast, clean Pokémon creation across all supported games.  
-These commands integrate directly with the bot’s legality pipeline and AutoOT logic.
-
-### 🎮 Available Slash Commands
+Modern Discord Slash Commands for fast, clean Pokémon creation across all supported games, integrated directly with the legality pipeline and AutoOT logic.
 
 | Slash Command | Game |
 |--------------|------|
@@ -452,128 +275,41 @@ These commands integrate directly with the bot’s legality pipeline and AutoOT 
 | `/create-bdsp` | Brilliant Diamond / Shining Pearl |
 | `/create-pla` | Legends: Arceus |
 | `/create-plza` | Legends: Z-A |
-| `/create-lgpe` | Let’s Go Pikachu / Eevee |
-
-### 🔹 Notes
-- Slash commands provide **guided Pokémon creation** without needing manual Showdown formatting.
-- Fully compatible with **Auto-Legalization**, **AutoOT**, and **language handling**.
-- Ideal for newer users or servers that want a **clean, modern interaction flow**.
-
-> Text commands and batch systems remain fully supported — slash commands simply add another powerful option.
+| `/create-lgpe` | Let's Go Pikachu / Eevee |
 
 ---
-
-### 📍 Met Location Reference
-- **Gen 2–8 Locations:** [Imgur](https://i.imgur.com/v02WMmL.jpeg)  
-- **SWSH/BDSP/PLA/SV/PLZA Locations:** [Pastebin](https://pastebin.com/NBu14c6q)
-
-> 🔹 `Met Location:` now supports **numeric IDs** AND **location names**. See above references for valid values per generation.
-
----
-
-### 💠 Characteristic Reference
-| Characteristic | IV Set | IV Type |
-|----------------|--------|---------|
-| `Likes to eat` | 30, 8, 13, 18, 23, 25 | HP |
-| `Takes plenty of siestas` | 31, 6, 26, 22, 10, 0 | HP |
-| `Scatters things often` | 28, 8, 28, 12, 9, 19 | HP |
-| `Likes to relax` | 29, 16, 3, 7, 26, 13 | HP |
-| `Nods off a lot` | 27, 0, 13, 27, 27, 8 | HP |
-| `Proud of its power` | 18, 30, 10, 11, 26, 3 | Attack |
-| `Likes to thrash about` | 10, 31, 0, 3, 12, 0 | Attack |
-| `A little quick tempered` | 25, 27, 9, 7, 8, 8 | Attack |
-| `Quick tempered` | 0, 29, 6, 23, 4, 17 | Attack |
-| `Likes to fight` | 25, 28, 11, 8, 9, 18 | Attack |
-| `Sturdy body` | 15, 24, 30, 5, 24, 29 | Defense |
-| `Capable of taking hits` | 6, 0, 21, 2, 18, 3 | Defense |
-| `Highly persistent` | 4, 21, 27, 9, 21, 18 | Defense |
-| `Good endurance` | 19, 2, 23, 2, 6, 4 | Defense |
-| `Good perseverance` | 26, 16, 29, 0, 20, 22 | Defense |
-| `Highly curious` | 9, 6, 21, 30, 10, 28 | Special Attack |
-| `Mischievous` | 7, 20, 0, 31, 5, 17 | Special Attack |
-| `Thoroughly cunning` | 5, 4, 20, 27, 12, 26 | Special Attack |
-| `Often lost in thought` | 8, 3, 1, 23, 19, 14 | Special Attack |
-| `Very finicky` | 9, 1, 0, 24, 21, 12 | Special Attack |
-| `Strong willed` | 14, 6, 29, 16, 30, 0 | Special Defense |
-| `Somewhat vain` | 10, 5, 10, 15, 26, 15 | Special Defense |
-| `Strongly defiant` | 10, 10, 12, 3, 12, 10 | Special Defense |
-| `Hates to lose` | 3, 8, 13, 18, 23, 2 | Special Defense |
-| `Somewhat stubborn` | 4, 9, 14, 19, 24, 15 | Special Defense |
-| `Likes to run` | 2, 7, 12, 17, 22, 30 | Speed |
-| `Alert to sounds` | 31, 31, 31, 31, 31, 31 | Speed |
-| `Impetuous and silly` | 2, 7, 12, 17, 22, 27 | Speed |
-| `Somewhat of a clown` | 3, 8, 13, 18, 23, 28 | Speed |
-| `Quick to flee` | 4, 9, 14, 19, 24, 29 | Speed |
-
----
-
-### Example Usage
-
-```markdown
-Set EVs: Suggest
-Set IVs: 5IV
-Scale: XL
-Weight: 45
-Height: AV
-OT Friendship: 128
-HT Friendship: 128
-Met Location: 30024
-Game: PLA
-Moves: Random
-Relearn Moves: All
-Mark: BestFriends
-Ribbons: All
-GVs: 7 HP / 7 Atk / 7 Def / 7 SpA / 7 SpD / 7 Spe
-HT: HP / Atk / Def / SpA / SpD / Spe
-Characteristic: Quick to flee
-Markings: Diamond=Red / Heart=Red / Square=Blue / Star=Blue / Triangle=Red / Circle=Blue
-```
 
 ## ⚙️ Bot Functions
 
 ### 🧑‍🎓 AutoOT
-FusionBot automatically applies your **trainer information** based on the save file you’re currently using.  
-- Your **OT / TID / SID / OTGender** are applied automatically.  
-- To keep the trainer info in your own files, attach them with `t true`.  
-- For Showdown Sets, simply include the OT/TID/SID you want — AutoOT will then be disabled.  
-
-This ensures all trades feel natural and consistent with your game, while still letting you override it if you want custom trainer data.
-
----
+The bot automatically applies your **trainer information** based on the save file you're currently using.
+- Your **OT / TID / SID / OTGender** are applied automatically.
+- To keep the trainer info in your own files, attach them with `t true`.
+- For Showdown Sets, include the OT/TID/SID you want — AutoOT will then be disabled.
 
 ### 🔗 Link Trade Codes
-FusionBot assigns you a **personal static Link Trade Code** on your first trade.  
-- This code is **unique to you** and stays the same for all future trades.  
-- To reset it: use `dtc` (your next trade gives you a new random code).  
-- To customize it: use `ctc 12345678` (sets your permanent code to whatever you choose).  
-
-This makes trading smoother by removing guesswork — your link code is always ready.  
-
----
+You're assigned a **personal static Link Trade Code** on your first trade.
+- Reset it with `dtc` (next trade gives a new random code).
+- Customize it with `ctc 12345678` (sets your permanent code).
 
 ### 🏅 Medals & Milestones
-Every trade you complete is tracked by FusionBot, and your **trade count** shows up in the footer of the trade embed.  
-- For every **50 trades**, you earn a new medal 🥇.  
-- You can check your medals anytime in your profile card with the `mi` command.  
-- It’s just for fun — a little **progression system** to show off your trading dedication.  
+Every completed trade is tracked, and your **trade count** shows in the embed footer.
+- For every **50 trades**, you earn a new medal 🥇.
+- Check your medals anytime with the `mi` command.
 
-Think of it like leveling up — the more you trade, the more medals you rack up, proving you’re a true master trader.  
-
----
-
-### 🤖 Reading DMs Sent to the Bot
-You can now read the DMs a user sends to the bot. This is fun for when people think your bot is a real person and they attempt to speak to it, or get enraged at it because their internet sucks or don't have NSO. As sad as it is, sometimes users will send derogatory/racial/sexist messages to your bot thinking no one can see it, but now you can, and if they speak like that, do you really want them in your server? 
-- Visit the **UserDMsToBotForwarder** option in `Hub -> Discord` and insert a Channel ID, then restart the bot.
-- The DMs that get logged are only those without a command, so you will not get flooded with user command input.
-- You'll also be able to see attachments users send to the bot, but beware, because it can get weird. I learned from experience.
+### 🛡️ Smart Fair-Cooldowns
+Cooldowns only apply when a trade actually **completes** on the Switch.
+- Format mistakes, illegal sets, blocked species, and cancelled trades **don't** count toward your daily limit.
+- A clear "No Cooldown Applied" banner appears on every failed-request embed.
 
 ---
 
-## 🔗 Other Projects
+## 🔗 PKM Universe Projects
 
-- [**Switch Remote for PC**](https://github.com/Secludedly/Switch-Remote-For-PC) — GUI to control Switch from PC.
-- [**PKHeX ALM Releases**](https://github.com/Secludedly/PKHeX-ALM-Releases/releases) — PKHeX + AutoLegalityMod pre-built with config files.
+- [**pkm-universe.com**](https://pkm-universe.com) — community hub.
+- **PKM Universe Seed Finder** — raid seed search, IV/reward filtering, and live host tracking.
+- **PKM Universe Verification** — secure member verification with captcha, risk scoring, and role assignment.
 
-## 🤝 Supported Projects
+## 🙏 Built On
 
-- [**GenPKM**](https://genpkm.com/pokecreator.php) — Web-based alternative to Showdown for bot-ready sets.
+This fork exists thanks to **[Secludedly's ZE-FusionBot](https://github.com/Secludedly/ZE-FusionBot)** and **[hexbyt3's PokeBot](https://github.com/hexbyt3/PokeBot)**. Please support the upstream projects.
