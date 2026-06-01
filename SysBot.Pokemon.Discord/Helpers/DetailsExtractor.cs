@@ -379,6 +379,14 @@ public static class DetailsExtractor<T> where T : PKM, new()
     }
 
     // Scrape move names with PP and type emojis
+    /// <summary>
+    /// Returns true only if the configured emoji string is actually usable. Filters out the
+    /// placeholder garbage ("?" / "??" / blank) that several early configs shipped with — those
+    /// render as literal question marks in the embed instead of an emoji (e.g. "Yanma ??").
+    /// </summary>
+    private static bool IsUsableEmojiCode(string? s) =>
+        !string.IsNullOrWhiteSpace(s) && !s.All(c => c == '?');
+
     private static List<string> GetMoveNames(T pk, GameStrings strings)
     {
         ushort[] moves = new ushort[4];
@@ -387,11 +395,6 @@ public static class DetailsExtractor<T> where T : PKM, new()
         var moveNames = new List<string>();
 
         // Prepare type emojis dictionary — use config emojis, fall back to Unicode.
-        // Filter out placeholder garbage like "?" / "??" that some early configs shipped with —
-        // those render as literal question marks in the embed instead of an emoji.
-        static bool IsUsableEmojiCode(string? s) =>
-            !string.IsNullOrWhiteSpace(s) && !s.All(c => c == '?');
-
         var typeEmojis = SysCord<T>.Runner.Config.Trade.TradeEmbedSettings.CustomTypeEmojis
             .Where(e => IsUsableEmojiCode(e.EmojiCode))
             .ToDictionary(e => (PKHeX.Core.MoveType)e.MoveType, e => $"{e.EmojiCode}");
@@ -507,20 +510,24 @@ public static class DetailsExtractor<T> where T : PKM, new()
         {
             TradeExtensions<T>.HasMark(ribbonIndex, out RibbonIndex result, out markTitle);
         }
-        string alphaSymbol = (pk is IAlpha alpha && alpha.IsAlpha) ? SysCord<T>.Runner.Config.Trade.TradeEmbedSettings.AlphaPLAEmoji.EmojiString : string.Empty;
+        var alphaRaw = SysCord<T>.Runner.Config.Trade.TradeEmbedSettings.AlphaPLAEmoji.EmojiString;
+        string alphaSymbol = (pk is IAlpha alpha && alpha.IsAlpha && IsUsableEmojiCode(alphaRaw)) ? alphaRaw : string.Empty;
         string shinySymbol = pk.ShinyXor == 0 ? "◼ " : pk.IsShiny ? "★ " : string.Empty;
         string genderSymbol = GameInfo.GenderSymbolASCII[pk.Gender];
         string maleEmojiString = SysCord<T>.Runner.Config.Trade.TradeEmbedSettings.MaleEmoji.EmojiString;
         string femaleEmojiString = SysCord<T>.Runner.Config.Trade.TradeEmbedSettings.FemaleEmoji.EmojiString;
-        // Hide gender emoji on legendaries and mythicals
+        // Hide gender emoji on legendaries and mythicals. Fall back to plain (M)/(F) text when
+        // the configured emoji is missing OR placeholder garbage ("?" / "??") — otherwise the
+        // embed shows "Species ??" instead of a gender symbol.
         bool isLegendaryOrMythical = IsLegendaryOrMythical(pk.Species);
         string displayGender = (isLegendaryOrMythical || string.IsNullOrEmpty(genderSymbol)) ? "" : genderSymbol switch
         {
-            "M" => !string.IsNullOrEmpty(maleEmojiString) ? maleEmojiString : "(M) ",
-            "F" => !string.IsNullOrEmpty(femaleEmojiString) ? femaleEmojiString : "(F) ",
+            "M" => IsUsableEmojiCode(maleEmojiString) ? maleEmojiString : "(M) ",
+            "F" => IsUsableEmojiCode(femaleEmojiString) ? femaleEmojiString : "(F) ",
             _ => ""
         };
-        string mysteryGiftEmoji = pk.FatefulEncounter ? SysCord<T>.Runner.Config.Trade.TradeEmbedSettings.MysteryGiftEmoji.EmojiString : "";
+        var mysteryGiftRaw = SysCord<T>.Runner.Config.Trade.TradeEmbedSettings.MysteryGiftEmoji.EmojiString;
+        string mysteryGiftEmoji = (pk.FatefulEncounter && IsUsableEmojiCode(mysteryGiftRaw)) ? mysteryGiftRaw : "";
 
         return shinySymbol + alphaSymbol + mightyMarkSymbol + alphaMarkSymbol + mysteryGiftEmoji + displayGender + (!string.IsNullOrEmpty(markTitle) ? $"{markTitle} " : "");
     }
