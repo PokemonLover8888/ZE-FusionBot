@@ -560,29 +560,35 @@ public static class QueueHelper<T> where T : PKM, new()
         // <5KB-fallback logic below would also resolve to a species sprite — so short-circuit
         // here and return the egg sprite directly with its own dominant color.
         //
-        // Eggs: composite the species sprite centered on the PKM Universe branded egg, so the
-        // embed shows the Pokémon "inside" the egg. The base egg PNG is pixel-identical to the
-        // site's pokemon-egg.webp (same green egg) but in a format GDI+ can decode for overlay.
-        // The result is saved locally and attached (IsLocalFile path downstream). Falls back to
-        // the plain egg URL if compositing fails.
+        // Eggs:
+        //   BDSP (PB8) → composite the species sprite centered on the branded egg so the embed
+        //                shows the Pokémon "inside" the egg. Uses the PokeAPI home sprite (keyed
+        //                purely by dex number) so it works for every species — PokeImg's gender
+        //                suffix (md/fd vs mf) 404s for some species and broke the overlay.
+        //   all others → plain branded egg (matches the website's pokemon-egg.webp).
         if (pk.IsEgg)
         {
-            const string eggBasePng = "https://creator.pkm-universe.com/assets/anime-eggs/default-egg.png";
-            try
+            const string eggWebp = "https://creator.pkm-universe.com/assets/pokemon-egg.webp";
+
+            if (pk is PB8)
             {
-                string speciesUrl = TradeExtensions<T>.PokeImg(pk, false, false, null);
-                using var composite = await OverlaySpeciesOnEgg(eggBasePng, speciesUrl);
-                string localPath = SaveImageLocally(composite);
-                var (cR, cG, cB) = await GetDominantColorAsync(localPath);
-                return (localPath, new DiscordColor(cR, cG, cB));
+                const string eggBasePng = "https://creator.pkm-universe.com/assets/anime-eggs/default-egg.png"; // GDI+-decodable, same art
+                try
+                {
+                    string speciesUrl = $"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/home/{pk.Species}.png";
+                    using var composite = await OverlaySpeciesOnEgg(eggBasePng, speciesUrl);
+                    string localPath = SaveImageLocally(composite);
+                    var (cR, cG, cB) = await GetDominantColorAsync(localPath);
+                    return (localPath, new DiscordColor(cR, cG, cB));
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Egg composite failed, using plain egg: {ex.Message}");
+                }
             }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Egg composite failed, using plain egg: {ex.Message}");
-                const string eggFallback = "https://creator.pkm-universe.com/assets/pokemon-egg.webp";
-                var (eR, eG, eB) = await GetDominantColorAsync(eggFallback);
-                return (eggFallback, new DiscordColor(eR, eG, eB));
-            }
+
+            var (eR, eG, eB) = await GetDominantColorAsync(eggWebp);
+            return (eggWebp, new DiscordColor(eR, eG, eB));
         }
 
         bool canGmax = pk is PK8 pk8g && pk8g.CanGigantamax;
