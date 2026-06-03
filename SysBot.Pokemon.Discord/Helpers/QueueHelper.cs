@@ -575,7 +575,9 @@ public static class QueueHelper<T> where T : PKM, new()
                 const string eggBasePng = "https://creator.pkm-universe.com/assets/anime-eggs/default-egg.png"; // GDI+-decodable, same art
                 try
                 {
-                    string speciesUrl = $"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/home/{pk.Species}.png";
+                    // Use the shiny sprite when the egg will hatch shiny so "Shiny: Yes" shows.
+                    string shinyDir = pk.IsShiny ? "shiny/" : "";
+                    string speciesUrl = $"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/home/{shinyDir}{pk.Species}.png";
                     using var composite = await OverlaySpeciesOnEgg(eggBasePng, speciesUrl);
                     string localPath = SaveImageLocally(composite);
                     var (cR, cG, cB) = await GetDominantColorAsync(localPath);
