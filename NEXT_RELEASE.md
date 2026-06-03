@@ -5,8 +5,8 @@ member-facing feature, a bug fix worth calling out, or a few changes worth bundl
 bump `TradeBot.cs` version and cut the release with these as the changelog.
 
 ## Current Baseline
-- Last release: **v8.0.5** (2026-05-31)
-- Last released to all 12 trade-bot EXEs: **v8.0.5** (deployed 2026-05-31)
+- Last release: **v8.0.6** (2026-06-03)
+- Last released to all 12 trade-bot EXEs: **v8.0.6** (deployed 2026-06-03)
 
 ## Queued for next release
 
@@ -14,12 +14,7 @@ bump `TradeBot.cs` version and cut the release with these as the changelog.
 *(none queued)*
 
 ### Fixes
-- **Gender/Alpha/Mystery-Gift emoji placeholder filter.** The earlier move-type emoji fix only
-  covered `CustomTypeEmojis` and `UsePlusMoveEmoji`. The same placeholder-`?` garbage was still
-  rendering for the gender symbol (e.g. "Yanma ??"), Alpha mark, and Mystery-Gift mark. Promoted
-  `IsUsableEmojiCode` to a shared `DetailsExtractor` helper and applied it to `MaleEmoji` /
-  `FemaleEmoji` (falls back to `(M)` / `(F)` text), `AlphaPLAEmoji`, and `MysteryGiftEmoji`.
-  Placeholder strings cleaned from the affected per-bot configs too.
+*(none queued)*
 
 ### Internal / chore
 *(none queued)*
