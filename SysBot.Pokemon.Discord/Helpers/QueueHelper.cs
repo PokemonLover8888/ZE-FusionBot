@@ -560,14 +560,29 @@ public static class QueueHelper<T> where T : PKM, new()
         // <5KB-fallback logic below would also resolve to a species sprite — so short-circuit
         // here and return the egg sprite directly with its own dominant color.
         //
-        // Use the SAME egg sprite the PKM Universe website uses everywhere
-        // (/assets/pokemon-egg.webp) so every egg trade matches the site. One consistent
-        // branded egg for all Pokémon — mirrors how eggs work in-game.
+        // Eggs: composite the species sprite centered on the PKM Universe branded egg, so the
+        // embed shows the Pokémon "inside" the egg. The base egg PNG is pixel-identical to the
+        // site's pokemon-egg.webp (same green egg) but in a format GDI+ can decode for overlay.
+        // The result is saved locally and attached (IsLocalFile path downstream). Falls back to
+        // the plain egg URL if compositing fails.
         if (pk.IsEgg)
         {
-            const string eggSprite = "https://creator.pkm-universe.com/assets/pokemon-egg.webp";
-            var (eR, eG, eB) = await GetDominantColorAsync(eggSprite);
-            return (eggSprite, new DiscordColor(eR, eG, eB));
+            const string eggBasePng = "https://creator.pkm-universe.com/assets/anime-eggs/default-egg.png";
+            try
+            {
+                string speciesUrl = TradeExtensions<T>.PokeImg(pk, false, false, null);
+                using var composite = await OverlaySpeciesOnEgg(eggBasePng, speciesUrl);
+                string localPath = SaveImageLocally(composite);
+                var (cR, cG, cB) = await GetDominantColorAsync(localPath);
+                return (localPath, new DiscordColor(cR, cG, cB));
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Egg composite failed, using plain egg: {ex.Message}");
+                const string eggFallback = "https://creator.pkm-universe.com/assets/pokemon-egg.webp";
+                var (eR, eG, eB) = await GetDominantColorAsync(eggFallback);
+                return (eggFallback, new DiscordColor(eR, eG, eB));
+            }
         }
 
         bool canGmax = pk is PK8 pk8g && pk8g.CanGigantamax;
@@ -647,43 +662,39 @@ public static class QueueHelper<T> where T : PKM, new()
     {
         System.Drawing.Image? eggImage = await LoadImageFromUrl(eggImageUrl);
         System.Drawing.Image? speciesImage = await LoadImageFromUrl(speciesImageUrl);
-        
+
         if (eggImage == null || speciesImage == null)
         {
             throw new InvalidOperationException("Failed to load egg or species image.");
         }
 
 #pragma warning disable CA1416 // Validate platform compatibility
-        double scaleRatio = Math.Min((double)eggImage.Width / speciesImage.Width, (double)eggImage.Height / speciesImage.Height);
-        Size newSize = new((int)(speciesImage.Width * scaleRatio), (int)(speciesImage.Height * scaleRatio));
-        System.Drawing.Image resizedSpeciesImage = new Bitmap(speciesImage, newSize);
-
-        using (Graphics g = Graphics.FromImage(eggImage))
+        // Render at the egg's native resolution (no downscale to 128) for a crisp embed.
+        var canvas = new Bitmap(eggImage.Width, eggImage.Height);
+        using (Graphics g = Graphics.FromImage(canvas))
         {
-            int speciesX = (eggImage.Width - resizedSpeciesImage.Width) / 2;
-            int speciesY = (eggImage.Height - resizedSpeciesImage.Height) / 2;
-            g.DrawImage(resizedSpeciesImage, speciesX, speciesY, resizedSpeciesImage.Width, resizedSpeciesImage.Height);
-        }
+            g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.HighQuality;
+            g.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.HighQuality;
 
-        speciesImage.Dispose();
-        resizedSpeciesImage.Dispose();
+            // Draw the egg as the background.
+            g.DrawImage(eggImage, 0, 0, eggImage.Width, eggImage.Height);
 
-        double scale = Math.Min(128.0 / eggImage.Width, 128.0 / eggImage.Height);
-        int newWidth = (int)(eggImage.Width * scale);
-        int newHeight = (int)(eggImage.Height * scale);
-
-        Bitmap finalImage = new(128, 128);
-
-        using (Graphics g = Graphics.FromImage(finalImage))
-        {
-            int x = (128 - newWidth) / 2;
-            int y = (128 - newHeight) / 2;
-            g.DrawImage(eggImage, x, y, newWidth, newHeight);
+            // Scale the species sprite to ~55% of the egg's width and center it slightly
+            // above middle so it reads as the Pokémon sitting "inside" the egg, not covering it.
+            double targetW = eggImage.Width * 0.55;
+            double spriteScale = targetW / speciesImage.Width;
+            int sW = (int)(speciesImage.Width * spriteScale);
+            int sH = (int)(speciesImage.Height * spriteScale);
+            int sX = (eggImage.Width - sW) / 2;
+            int sY = (int)((eggImage.Height - sH) / 2 - eggImage.Height * 0.04); // nudge up a touch
+            g.DrawImage(speciesImage, sX, sY, sW, sH);
         }
 
         eggImage.Dispose();
+        speciesImage.Dispose();
 #pragma warning restore CA1416 // Validate platform compatibility
-        return finalImage;
+        return canvas;
     }
 
     private static async Task<System.Drawing.Image?> LoadImageFromUrl(string url)
