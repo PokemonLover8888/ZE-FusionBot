@@ -559,9 +559,30 @@ public static class QueueHelper<T> where T : PKM, new()
         // image SIZE for eggs (it still returns the species capture), and the form-specific +
         // <5KB-fallback logic below would also resolve to a species sprite — so short-circuit
         // here and return the egg sprite directly with its own dominant color.
+        //
+        // PKM Universe hosts a set of premium "anime egg" sprites on creator.pkm-universe.com:
+        // species-specific eggs for a curated set of (mostly baby) Pokémon, plus a default egg
+        // for everything else. Map by national dex number; fall back to default-egg.png.
         if (pk.IsEgg)
         {
-            const string eggSprite = "https://raw.githubusercontent.com/Secludedly/ZE-FusionBot-Sprite-Images/main/egg.png";
+            const string eggBase = "https://creator.pkm-universe.com/assets/anime-eggs/";
+            string eggFile = pk.Species switch
+            {
+                133 => "eevee-133.png",     // Eevee
+                155 => "cyndaquil-155.png",  // Cyndaquil
+                175 => "togepi-175.png",     // Togepi
+                231 => "phanpy-231.png",     // Phanpy
+                239 => "elekid-239.png",     // Elekid
+                246 => "larvitar-246.png",   // Larvitar
+                258 => "mudkip-258.png",     // Mudkip
+                393 => "piplup-393.png",     // Piplup
+                439 => "mimejr-439.png",     // Mime Jr.
+                440 => "happiny-440.png",    // Happiny
+                490 => "manaphy-490.png",    // Manaphy (its egg is special in-game too)
+                677 => "espurr-677.png",     // Espurr
+                _ => "default-egg.png",
+            };
+            string eggSprite = eggBase + eggFile;
             var (eR, eG, eB) = await GetDominantColorAsync(eggSprite);
             return (eggSprite, new DiscordColor(eR, eG, eB));
         }
