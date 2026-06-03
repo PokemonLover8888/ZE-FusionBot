@@ -5,8 +5,8 @@ member-facing feature, a bug fix worth calling out, or a few changes worth bundl
 bump `TradeBot.cs` version and cut the release with these as the changelog.
 
 ## Current Baseline
-- Last release: **v8.0.6** (2026-06-03)
-- Last released to all 12 trade-bot EXEs: **v8.0.6** (deployed 2026-06-03)
+- Last release: **v8.0.7** (2026-06-03)
+- Last released to all 12 trade-bot EXEs: behavior live; footers update on next redeploy
 
 ## Queued for next release
 
