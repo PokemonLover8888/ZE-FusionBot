@@ -555,6 +555,17 @@ public static class QueueHelper<T> where T : PKM, new()
     {
         string embedImageUrl;
 
+        // Eggs: show an actual egg sprite, not the hatched Pokémon. PokeImg only varies the
+        // image SIZE for eggs (it still returns the species capture), and the form-specific +
+        // <5KB-fallback logic below would also resolve to a species sprite — so short-circuit
+        // here and return the egg sprite directly with its own dominant color.
+        if (pk.IsEgg)
+        {
+            const string eggSprite = "https://raw.githubusercontent.com/Secludedly/ZE-FusionBot-Sprite-Images/main/egg.png";
+            var (eR, eG, eB) = await GetDominantColorAsync(eggSprite);
+            return (eggSprite, new DiscordColor(eR, eG, eB));
+        }
+
         bool canGmax = pk is PK8 pk8g && pk8g.CanGigantamax;
         embedImageUrl = pk.IsEgg
             ? TradeExtensions<T>.PokeImg(pk, false, true, null)
