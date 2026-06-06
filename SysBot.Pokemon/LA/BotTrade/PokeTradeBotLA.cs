@@ -1384,8 +1384,23 @@ public class PokeTradeBotLA(PokeTradeHub<PA8> Hub, PokeBotState Config) : PokeRo
 
         if (toSend is IHomeTrack pk && pk.HasTracker)
         {
-            Log("Home tracker detected. Can't apply AutoOT.");
-            return toSend;
+            // PLA native catches (met loc < 30000) shouldn't have a HOME tracker — they're
+            // wild static encounters (Coronet Highlands Darkrai, Shaymin, etc.), not HOME
+            // imports. Some upstream layers may auto-add a tracker anyway. Strip it here so
+            // AutoOT can proceed instead of refusing the swap and shipping the bot's default
+            // OT ("Dude") to the recipient.
+            bool isPLANativeForAutoOT = toSend.MetLocation is > 0 and < 30000;
+            if (isPLANativeForAutoOT)
+            {
+                pk.Tracker = 0;
+                toSend.RefreshChecksum();
+                Log("Stripped HOME tracker from PLA native catch to allow AutoOT.");
+            }
+            else
+            {
+                Log("Home tracker detected. Can't apply AutoOT.");
+                return toSend;
+            }
         }
 
         // Current handler cannot be past gen OT
@@ -1395,8 +1410,13 @@ public class PokeTradeBotLA(PokeTradeHub<PA8> Hub, PokeBotState Config) : PokeRo
             return toSend;
         }
 
-        // Check if the Pokémon is from a Mystery Gift
-        bool isMysteryGift = toSend.FatefulEncounter;
+        // Check if the Pokémon is from a Mystery Gift. FatefulEncounter alone isn't
+        // sufficient — PLA's static legendary/mythical encounters (Coronet Highlands
+        // Darkrai, Shaymin, the space-time mythicals, etc.) all set FatefulEncounter=true
+        // but are NATIVE wild static catches that DO support AutoOT. Only treat as Mystery
+        // Gift when the file is also HOME-transferred (met loc >= 30000), which indicates a
+        // true event-distributed Pokemon with preset OT/TID/SID from an external source.
+        bool isMysteryGift = toSend.FatefulEncounter && toSend.MetLocation >= 30000;
 
         // Check if Mystery Gift has legitimate preset OT/TID/SID (not configured defaults or ALM's defaults)
         // Use the actual configured values from LegalitySettings, not hardcoded defaults

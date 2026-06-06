@@ -623,6 +623,23 @@ public static class Helpers<T> where T : PKM, new()
                     // cleanly because the pre-made's encounter is non-fixed-OT.
                     if (isGoMyth)
                         fallbackCheck = true;
+                    // EXCEPTION: BDSP natively catches Shaymin (Oak's Letter → Flower Paradise),
+                    // Darkrai (Member Card → Newmoon Island) and Arceus (Azure Flute → Hall of
+                    // Origin). These are in-game STATIC catches with the player's own OT, so the
+                    // fixed-OT/AutoOT trap above doesn't apply — AutoOT swaps cleanly. For a
+                    // NON-SHINY request, prefer ALM's native EncounterStatic8b over the pre-made
+                    // file (the pre-made PB8s are PLA/Gen8a transplants that show "Non-Native &
+                    // Has Home Tracker"). Only un-forces the fallback when ALM already produced a
+                    // VALID native Pokémon — if ALM fails, isGoMyth keeps fallbackCheck=true and
+                    // the pre-made file is still used, so this can only improve, never regress.
+                    bool bdspNativeMythical = typeof(T) == typeof(PB8) && template.Species is 491 or 492 or 493;
+                    if (bdspNativeMythical && !template.Shiny
+                        && pkm != null && pkm.Species == template.Species
+                        && new LegalityAnalysis(pkm).Valid)
+                    {
+                        fallbackCheck = false;
+                        LogUtil.LogInfo($"[TradeModule] BDSP native mythical {template.Species}: using ALM native encounter, skipping pre-made file", "Helpers");
+                    }
                     LogUtil.LogInfo($"[TradeModule] DIAG fallback-gate: pkm-null={pkm == null} speciesMatch={(pkm != null && pkm.Species == template.Species)} fallbackCheck={fallbackCheck}", "Helpers");
 
                     // Z-A native check: if ALM produced a PA9 with a Z-A met location for a
@@ -1299,7 +1316,14 @@ public static class Helpers<T> where T : PKM, new()
         // tracker exists. Adding a fabricated random one breaks AutoOT (forces it off) and
         // HOME's server-side validation rejects on upload because the tracker isn't registered.
         bool isSWSHNativeCatch = pkm is PK8 && pkm.MetLocation is > 0 and < 30000;
-        if (la.Valid && pkm is IHomeTrack { HasTracker: false } homeTrack && !isZANativeFreshCatch && !isBDSPNativeCatch && !isSWSHNativeCatch)
+        // Same exemption for PLA native catches — e.g. Coronet Highlands Darkrai and Shaymin
+        // (EncounterStatic8a, unlocked by BDSP/SwSh save data on the console). The member
+        // catches these in-game, so no HOME tracker exists. Fabricating a random one forces
+        // AutoOT off ("Home tracker detected. Can't apply AutoOT.") and HOME rejects the file
+        // on upload because the tracker isn't server-registered. ALM already produces a valid
+        // tracker-less PA8 here, so just skip the add and AutoOT applies cleanly.
+        bool isPLANativeCatch = pkm is PA8 && pkm.MetLocation is > 0 and < 30000;
+        if (la.Valid && pkm is IHomeTrack { HasTracker: false } homeTrack && !isZANativeFreshCatch && !isBDSPNativeCatch && !isSWSHNativeCatch && !isPLANativeCatch)
         {
             // Mythicals/events typically distributed via HOME - need a HOME tracker for legality
             ushort[] homeTrackedSpecies =

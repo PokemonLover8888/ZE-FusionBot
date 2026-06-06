@@ -1681,12 +1681,28 @@ public class PokeTradeBotSWSH(PokeTradeHub<PK8> hub, PokeBotState config) : Poke
 
         if (toSend is IHomeTrack pk && pk.HasTracker)
         {
-            Log("Home tracker detected. Can't apply AutoOT.");
-            return toSend;
+            // SwSh native catches (met loc < 30000) shouldn't carry a HOME tracker — they're
+            // in-game encounters (Crown Tundra statics, etc.), not HOME imports. Strip a stray
+            // tracker so AutoOT can run instead of shipping the bot's default OT ("Dude").
+            bool isSWSHNativeForAutoOT = toSend.MetLocation is > 0 and < 30000;
+            if (isSWSHNativeForAutoOT)
+            {
+                pk.Tracker = 0;
+                toSend.RefreshChecksum();
+                Log("Stripped HOME tracker from SwSh native catch to allow AutoOT.");
+            }
+            else
+            {
+                Log("Home tracker detected. Can't apply AutoOT.");
+                return toSend;
+            }
         }
 
-        // Check if the Pokémon is from a Mystery Gift
-        bool isMysteryGift = toSend.FatefulEncounter;
+        // Check if the Pokémon is from a Mystery Gift. FatefulEncounter alone isn't sufficient —
+        // native static legendaries set it too but support AutoOT. Only treat as a true Mystery
+        // Gift when also HOME-transferred (met loc >= 30000), i.e. an event Pokemon with preset
+        // OT/TID/SID from an external source.
+        bool isMysteryGift = toSend.FatefulEncounter && toSend.MetLocation >= 30000;
 
         // Check if Mystery Gift has legitimate preset OT/TID/SID (not configured defaults or ALM's defaults)
         // Use the actual configured values from LegalitySettings, not hardcoded defaults
