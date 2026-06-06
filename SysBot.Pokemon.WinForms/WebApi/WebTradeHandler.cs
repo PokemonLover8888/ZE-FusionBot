@@ -118,8 +118,16 @@ public static class WebTradeHandler
         if (!FormRequiredItems.TryGetValue((ushort)species, out var formMap)) return;
         if (!formMap.TryGetValue((byte)form, out var primaryName)) return;
 
-        // Giratina Origin special case — try "Griseous Core" first (Gen 9), fall back to "Griseous Orb"
-        var candidates = species == 487 ? new[] { "Griseous Core", "Griseous Orb" } : new[] { primaryName };
+        // Giratina Origin item is GAME-SPECIFIC: PLA (PA8) + SV (PK9) use "Griseous Core"; BDSP/SwSh
+        // (PB8/PK8) use "Griseous Orb". Wrong one => illegal (the PLA "Orb" bug). Put the game-correct
+        // item FIRST so it's the one that gets attached.
+        string[] candidates;
+        if (species == 487)
+            candidates = (targetType == typeof(PA8) || targetType == typeof(PK9))
+                ? new[] { "Griseous Core", "Griseous Orb" }
+                : new[] { "Griseous Orb", "Griseous Core" };
+        else
+            candidates = new[] { primaryName };
         foreach (var name in candidates)
         {
             var id = LookupItemIdByName(name);
@@ -418,7 +426,9 @@ public static class WebTradeHandler
             // Gen 4-8 (PK8/PB8/PA8) uses "Griseous Orb". Gen 9 (PK9) uses "Griseous Core".
             if (set.Species == 487 && set.Form == 1 && set.HeldItem == 0)
             {
-                var itemName = typeof(T) == typeof(PK9) ? "Griseous Core" : "Griseous Orb";
+                // GAME-SPECIFIC: PLA (PA8) and SV (PK9) use "Griseous Core"; BDSP/SwSh use "Griseous Orb".
+                // Attaching the Orb to a PLA Giratina-Origin makes it ILLEGAL (the reported bug).
+                var itemName = (typeof(T) == typeof(PK9) || typeof(T) == typeof(PA8)) ? "Griseous Core" : "Griseous Orb";
                 LogUtil.LogInfo($"[WebTrade] Auto-attaching {itemName} to Giratina-Origin ({typeof(T).Name})", "WebTrade");
                 var setText = set.Text;
                 var lines = setText.Replace("\r\n","\n").Split('\n');
@@ -930,12 +940,31 @@ public static class WebTradeHandler
             ulong webUserID = (ulong)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             var trainerInfo = new PokeTradeTrainerInfo(username, (ulong)webUserID);
             var notifier = new WebTradeNotifier<T>(tradeId);
+
+            // LGPE (PB7) trades use a 3-Pokemon "Pictocode" link code, NOT an 8-digit number. Without
+            // one the bot falls back to Pikachu/Pikachu/Pikachu and the website's 8-digit code is
+            // meaningless to the user. Derive the 3 codes deterministically from the last 3 digits of
+            // the numeric trade code — each digit 0-9 maps 1:1 to the 10 Pictocodes — so the website
+            // can show the SAME 3 Pokemon (last 3 digits) with no extra plumbing through the bridge.
+            List<Pictocodes>? lgcode = null;
+            if (typeof(T) == typeof(PB7))
+            {
+                int c = Math.Abs(tradeCode);
+                lgcode = new List<Pictocodes>
+                {
+                    (Pictocodes)((c / 100) % 10),
+                    (Pictocodes)((c / 10) % 10),
+                    (Pictocodes)(c % 10),
+                };
+                LogUtil.LogInfo($"[WebTrade] LGPE pictocode from code {tradeCode}: {string.Join(", ", lgcode)}", "WebTrade");
+            }
+
             // Enable AutoOT for normal ALM-generated trades so the receiver's Switch/HOME
             // accepts them. AutoOT applies cached trainer info or falls back to bot OT with
             // proper HT chain. Only event files (.wc9, .wb7) skip this — see SubmitEventTrade.
             // Raid-locked species (Chi-Yu, Treasures of Ruin, etc.) should be requested as
             // event files instead of showdown sets to preserve encounter metadata.
-            var detail = new PokeTradeDetail<T>(pk, trainerInfo, notifier, PokeTradeType.Specific, tradeCode, false, ignoreAutoOT: false);
+            var detail = new PokeTradeDetail<T>(pk, trainerInfo, notifier, PokeTradeType.Specific, tradeCode, false, lgcode: lgcode, ignoreAutoOT: false);
 
             long timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             int uniqueTradeID = (int)(timestamp & 0x7FFFFFFF);
