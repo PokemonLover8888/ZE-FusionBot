@@ -1479,6 +1479,27 @@ public static class Helpers<T> where T : PKM, new()
             or 670 or 716 or 717 or 718 or 719 or 720 or 721
             or 801 or 802 or 807 or 808 or 809;
 
+        // Native Z-A mons (met loc <= 350) sometimes fail ONLY on the cosmetic
+        // "Height / Weight statistically improbable" flag because ALM rolled extreme
+        // scalars (e.g. Sceptile, Dragonite). Re-roll to mid values; if that was the only
+        // issue the mon is now fully legal and STAYS NATIVE instead of falling back to a
+        // foreign game (which makes it Non-Native). If other real issues remain, la stays
+        // invalid and the foreign fallback below still runs -- so this can only improve.
+        if (!la.Valid && pkm is PA9 pa9HW && pkm.MetLocation is > 0 and <= 350)
+        {
+            var hwReport = la.Report();
+            if (hwReport.Contains("Height", StringComparison.OrdinalIgnoreCase)
+                && hwReport.Contains("Weight", StringComparison.OrdinalIgnoreCase))
+            {
+                pa9HW.HeightScalar = 128;
+                pa9HW.WeightScalar = 128;
+                pa9HW.Scale = 128;
+                pa9HW.RefreshChecksum();
+                la = new LegalityAnalysis(pa9HW);
+                LogUtil.LogInfo($"[TradeModule] Z-A native {pa9HW.Species}: re-rolled Height/Weight/Scale (cosmetic flag), valid now={la.Valid}", "Helpers");
+            }
+        }
+
         if (!la.Valid && pkm is PA9 && !isZAWildLegendary)
         {
             var fallback = TryGetAsHomePa9(template, spec);
