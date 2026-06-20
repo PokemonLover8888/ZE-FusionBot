@@ -38,6 +38,8 @@ public static class AutoLegalityWrapper
     // Used by TryGetAsWildOrEgg to temporarily narrow the encounter search.
     private static readonly SemaphoreSlim s_wildRetryLock = new SemaphoreSlim(1, 1);
     private static readonly List<EncounterTypeGroup> s_wildAndEggPriority = [EncounterTypeGroup.Slot, EncounterTypeGroup.Egg];
+    // Used by GetLegalForTradeRaidPriority: raid groups (Mystery/Static) FIRST, full fallback after.
+    private static readonly List<EncounterTypeGroup> s_raidPriority = [EncounterTypeGroup.Mystery, EncounterTypeGroup.Static, EncounterTypeGroup.Slot, EncounterTypeGroup.Egg, EncounterTypeGroup.Trade];
 
     private static void InitializeSettings(LegalitySettings cfg)
     {
@@ -306,6 +308,32 @@ public static class AutoLegalityWrapper
             {
                 APILegality.GameVersionPriority = previousType;
                 APILegality.PriorityOrder = previousOrder;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Generates with raid (Mystery/Static) encounters prioritized FIRST. Needed when a
+    /// raid-exclusive mark like the Mightiest Mark ("The Unrivaled") is requested: the host
+    /// disables HOME-tracker checks for trading convenience, which makes wild/egg cross-origin
+    /// encounters legal without a tracker, so the default priority (Slot/Egg before Mystery)
+    /// makes ALM pick a wild/egg encounter and the mark can't legally attach. Forcing
+    /// Mystery/Static first makes ALM pick the 7-star raid encounter (EncounterMight9) so the
+    /// mark is legal and applied. Falls back to the normal types if no raid encounter exists.
+    /// </summary>
+    public static PKM GetLegalForTradeRaidPriority(this ITrainerInfo sav, IBattleTemplate template, out string res)
+    {
+        lock (_almPriorityLock)
+        {
+            var previousList = EncounterMovesetGenerator.PriorityList;
+            try
+            {
+                EncounterMovesetGenerator.PriorityList = s_raidPriority;
+                return sav.GetLegalForTrade(template, out res);
+            }
+            finally
+            {
+                EncounterMovesetGenerator.PriorityList = previousList;
             }
         }
     }

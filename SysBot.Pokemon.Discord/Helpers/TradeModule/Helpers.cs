@@ -200,6 +200,15 @@ public static class Helpers<T> where T : PKM, new()
         // Detect if user explicitly specified IVs (for 6IV default enforcement)
         bool userSpecifiedIVs = contentLines.Any(l => l.TrimStart().StartsWith("IVs:", StringComparison.OrdinalIgnoreCase));
 
+        // The Mightiest Mark ("The Unrivaled") is exclusive to 7-star Tera Raids. The host
+        // disables HOME-tracker checks, which makes wild/egg cross-origin encounters legal
+        // and (since Slot/Egg outrank Mystery in the priority list) makes ALM pick a wild
+        // encounter the mark can't attach to. When the mark is requested, force raid-first
+        // encounter priority so ALM picks the raid encounter instead.
+        bool wantsRaidMark = System.Text.RegularExpressions.Regex.IsMatch(
+            contentWithoutLanguage, @"RibbonMarkMightiest\s*=\s*(true|1|yes)",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
         // Now parse the ShowdownSet without the Language line
         if (!ShowdownParsing.TryParseAnyLanguage(contentWithoutLanguage, out ShowdownSet? set) || set == null || set.Species == 0)
         {
@@ -537,12 +546,17 @@ public static class Helpers<T> where T : PKM, new()
 
                 // Last resort: original ALM call (will produce broken pkm and error handling kicks in)
                 if (pkm == null)
-                    pkm = sav.GetLegalForTrade(template, out result);
+                    pkm = wantsRaidMark
+                        ? sav.GetLegalForTradeRaidPriority(template, out result)
+                        : sav.GetLegalForTrade(template, out result);
             }
             else
             {
-                // Use normal template for regular Pokémon
-                pkm = sav.GetLegalForTrade(template, out result);
+                // Use normal template for regular Pokémon (raid-first when a Mightiest Mark
+                // is requested so the 7-star raid encounter wins over wild/egg).
+                pkm = wantsRaidMark
+                    ? sav.GetLegalForTradeRaidPriority(template, out result)
+                    : sav.GetLegalForTrade(template, out result);
 
                 // BDSP legendary met location override: ALM tends to pick roaming/event
                 // encounter slots that produce the wrong met location (e.g. Valley Windworks
@@ -936,7 +950,7 @@ public static class Helpers<T> where T : PKM, new()
         // Falls back silently to the original result if no wild/egg alternative exists
         // (e.g. Floette-Eternal, Zarude — species with no wild/egg encounter at all).
         // ============================================================================
-        if (!isEgg)
+        if (!isEgg && !wantsRaidMark)
         {
             var fixedOtCheck = new LegalityAnalysis(pkm);
             if (fixedOtCheck.Valid && AutoLegalityWrapper.IsFixedOT(fixedOtCheck.EncounterOriginal, pkm))
