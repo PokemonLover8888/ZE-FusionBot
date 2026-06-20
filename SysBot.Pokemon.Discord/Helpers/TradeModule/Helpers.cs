@@ -777,6 +777,50 @@ public static class Helpers<T> where T : PKM, new()
                                             if (pidEqualsEC) preMade.EncryptionConstant = preMade.PID;
                                             preMade.RefreshChecksum();
                                         }
+                                        // Honor the member's customizable spread on Z-A pre-made files.
+                                        // EVs (always trainable) and moves (relearnable) are NEVER applied
+                                        // to pre-mades otherwise, and the IVEnforcer skips Fateful mons
+                                        // entirely -- so e.g. a requested 252/252 Modest Floette-Eternal with
+                                        // bottle-capped IVs shipped with the file's random spread. Apply the
+                                        // requested EVs/moves/IVs here (IVs only when not a fixed/randomized-IV
+                                        // static like Magearna). Native encounter/met data is untouched; ships
+                                        // via the same Z-A bypass below.
+                                        if (preMade is PA9 && set != null)
+                                        {
+                                            try
+                                            {
+                                                if (set.EVs is { Length: 6 } && Array.Exists(set.EVs, e => e > 0))
+                                                    preMade.SetEVs(set.EVs);
+
+                                                var reqMoves = Array.FindAll(set.Moves ?? Array.Empty<ushort>(), m => m != 0);
+                                                if (reqMoves.Length > 0)
+                                                {
+                                                    preMade.SetMoves(reqMoves);
+                                                    preMade.HealPP();
+                                                }
+
+                                                bool fixedStaticIVs = ForcedEncounterEnforcer.RequiresRandomizedIVs(preMade, out _)
+                                                                      || ForcedEncounterEnforcer.TryGetFixedIVs(preMade, out _);
+                                                if (!fixedStaticIVs)
+                                                {
+                                                    var reqIVs = (set.IVs is { Length: 6 } && Array.Exists(set.IVs, v => v != 31))
+                                                        ? set.IVs : new[] { 31, 31, 31, 31, 31, 31 };
+                                                    preMade.SetIVs(reqIVs);
+                                                    if (preMade.CurrentLevel >= 50 && preMade is IHyperTrain htReq)
+                                                    {
+                                                        if (preMade.IV_HP  < 31) htReq.HT_HP  = true;
+                                                        if (preMade.IV_ATK < 31) htReq.HT_ATK = true;
+                                                        if (preMade.IV_DEF < 31) htReq.HT_DEF = true;
+                                                        if (preMade.IV_SPE < 31) htReq.HT_SPE = true;
+                                                        if (preMade.IV_SPA < 31) htReq.HT_SPA = true;
+                                                        if (preMade.IV_SPD < 31) htReq.HT_SPD = true;
+                                                    }
+                                                }
+                                                preMade.RefreshChecksum();
+                                                LogUtil.LogInfo($"[TradeModule] Pre-made {preMade.Species}: applied requested EVs/moves/IVs (customizable spread)", "Helpers");
+                                            }
+                                            catch (Exception ex) { LogUtil.LogError($"[TradeModule] Pre-made customization failed: {ex.Message}", "Helpers"); }
+                                        }
                                         var preMadeLa = new LegalityAnalysis(preMade);
                                         var preMadeReport = preMadeLa.Report();
                                         bool isHomeWondercardMismatch = !preMadeLa.Valid &&
