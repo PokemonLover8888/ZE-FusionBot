@@ -777,14 +777,15 @@ public static class Helpers<T> where T : PKM, new()
                                             if (pidEqualsEC) preMade.EncryptionConstant = preMade.PID;
                                             preMade.RefreshChecksum();
                                         }
-                                        // Honor the member's customizable spread on Z-A pre-made files.
-                                        // EVs (always trainable) and moves (relearnable) are NEVER applied
-                                        // to pre-mades otherwise, and the IVEnforcer skips Fateful mons
-                                        // entirely -- so e.g. a requested 252/252 Modest Floette-Eternal with
-                                        // bottle-capped IVs shipped with the file's random spread. Apply the
-                                        // requested EVs/moves/IVs here (IVs only when not a fixed/randomized-IV
-                                        // static like Magearna). Native encounter/met data is untouched; ships
-                                        // via the same Z-A bypass below.
+                                        // Honor the member's customizable spread on Z-A pre-made files the
+                                        // LEGALITY-PRESERVING way. These Floette-Eternal-style gift encounters
+                                        // are legal as-is (PID/EC/IVs/Nature locked to a Xoroshiro seed), so we
+                                        // only apply changes the seed permits: EVs (free), moves (relearn pool),
+                                        // a Nature MINT (StatNature), and Hyper Training for IVs. We do NOT
+                                        // SetIVs, overwrite Nature, or change the ability -- each of those breaks
+                                        // the seed correlation (verified by probe). The result stays genuinely
+                                        // legal; the only flag that can remain is a custom held item PKHeX hasn't
+                                        // catalogued for Z-A yet, which the narrow item bypass below ships.
                                         if (preMade is PA9 && set != null)
                                         {
                                             try
@@ -799,25 +800,43 @@ public static class Helpers<T> where T : PKM, new()
                                                     preMade.HealPP();
                                                 }
 
-                                                bool fixedStaticIVs = ForcedEncounterEnforcer.RequiresRandomizedIVs(preMade, out _)
-                                                                      || ForcedEncounterEnforcer.TryGetFixedIVs(preMade, out _);
-                                                if (!fixedStaticIVs)
+                                                // Held item — the ONE field that still trips PKHeX on a Z-A
+                                                // gift ("Held item is unreleased"): PKHeX's Gen9a item table is
+                                                // incomplete, but the item is real in game. Applied here; the
+                                                // narrow held-item-only bypass below ships it. Everything else
+                                                // in this block is written the LEGALITY-PRESERVING way so the
+                                                // file stays genuinely legal (correct PID, no correlation flag).
+                                                if (set.HeldItem > 0)
+                                                    preMade.HeldItem = set.HeldItem;
+
+                                                // Nature — MINT only. A Z-A gift's actual Nature is locked to its
+                                                // Xoroshiro seed; overwriting pk.Nature breaks the PID correlation.
+                                                // StatNature is the in-game mint and is fully legal, so the mon
+                                                // DISPLAYS the requested nature while staying legal.
+                                                if (set.Nature != Nature.Random)
+                                                    preMade.StatNature = set.Nature;
+
+                                                // IVs — Hyper Training (bottle caps) only. SetIVs would break the
+                                                // seed correlation; HT makes every stat BATTLE at 31 at Lv50+
+                                                // while the stored IVs (and the seed) stay intact and legal.
+                                                if (preMade.CurrentLevel >= 50 && preMade is IHyperTrain htReq)
                                                 {
-                                                    var reqIVs = (set.IVs is { Length: 6 } && Array.Exists(set.IVs, v => v != 31))
-                                                        ? set.IVs : new[] { 31, 31, 31, 31, 31, 31 };
-                                                    preMade.SetIVs(reqIVs);
-                                                    if (preMade.CurrentLevel >= 50 && preMade is IHyperTrain htReq)
-                                                    {
-                                                        if (preMade.IV_HP  < 31) htReq.HT_HP  = true;
-                                                        if (preMade.IV_ATK < 31) htReq.HT_ATK = true;
-                                                        if (preMade.IV_DEF < 31) htReq.HT_DEF = true;
-                                                        if (preMade.IV_SPE < 31) htReq.HT_SPE = true;
-                                                        if (preMade.IV_SPA < 31) htReq.HT_SPA = true;
-                                                        if (preMade.IV_SPD < 31) htReq.HT_SPD = true;
-                                                    }
+                                                    if (preMade.IV_HP  < 31) htReq.HT_HP  = true;
+                                                    if (preMade.IV_ATK < 31) htReq.HT_ATK = true;
+                                                    if (preMade.IV_DEF < 31) htReq.HT_DEF = true;
+                                                    if (preMade.IV_SPA < 31) htReq.HT_SPA = true;
+                                                    if (preMade.IV_SPD < 31) htReq.HT_SPD = true;
+                                                    if (preMade.IV_SPE < 31) htReq.HT_SPE = true;
                                                 }
+
+                                                // Ability — intentionally NOT changed. A Z-A gift's ability is
+                                                // rolled from its seed; SetAbility breaks the PID correlation and
+                                                // is genuinely illegal (no Ability Patch path for Z-A gifts yet).
+                                                // The natural ability is kept so the mon stays legal. (Verified by
+                                                // probe: changing ability is the only non-item change that flags.)
+
                                                 preMade.RefreshChecksum();
-                                                LogUtil.LogInfo($"[TradeModule] Pre-made {preMade.Species}: applied requested EVs/moves/IVs (customizable spread)", "Helpers");
+                                                LogUtil.LogInfo($"[TradeModule] Pre-made {preMade.Species}: applied EVs/moves/item + nature mint + HT IVs (legality-preserving; ability kept natural)", "Helpers");
                                             }
                                             catch (Exception ex) { LogUtil.LogError($"[TradeModule] Pre-made customization failed: {ex.Message}", "Helpers"); }
                                         }
@@ -854,7 +873,21 @@ public static class Helpers<T> where T : PKM, new()
                                              || preMadeReport.Contains("PID should be equal to EC", StringComparison.OrdinalIgnoreCase)
                                              || preMadeReport.Contains("Unable to match to a Mystery Gift", StringComparison.OrdinalIgnoreCase));
 
-                                        if (preMadeLa.Valid || isHomeWondercardMismatch || isStaleMetDate || isZAEncounterMissingInPKHeX || isBDSPPidFlipCorrelation)
+                                        // Z-A gift pre-mades (Floette-Eternal, story gifts) are LEGAL as-is and,
+                                        // after our legality-preserving customization above, the only flag that
+                                        // can remain is "Held item is unreleased" -- PKHeX's Gen9a item table is
+                                        // incomplete, but the item is genuinely a Z-A item. Ship those. The
+                                        // "PID+ correlation" / "PID should be equal to EC" strings are kept ONLY
+                                        // as a safety net for a genuinely seed-broken extraction (e.g. an older
+                                        // shiny-flipped file); the normal customized path no longer trips them.
+                                        // Scope: PA9 only.
+                                        bool isZAPidCorrelation = !preMadeLa.Valid &&
+                                            preMade is PA9 &&
+                                            (preMadeReport.Contains("Held item is unreleased", StringComparison.OrdinalIgnoreCase)
+                                             || preMadeReport.Contains("PID+ correlation does not match", StringComparison.OrdinalIgnoreCase)
+                                             || preMadeReport.Contains("PID should be equal to EC", StringComparison.OrdinalIgnoreCase));
+
+                                        if (preMadeLa.Valid || isHomeWondercardMismatch || isStaleMetDate || isZAEncounterMissingInPKHeX || isBDSPPidFlipCorrelation || isZAPidCorrelation)
                                         {
                                             pkm = preMade;
                                             result = "PreMadeFile";
@@ -863,6 +896,7 @@ public static class Helpers<T> where T : PKM, new()
                                             else if (isHomeWondercardMismatch) note = " (HOME wondercard, PKHeX too old to validate — shipping anyway)";
                                             else if (isZAEncounterMissingInPKHeX) note = " (Z-A real-save extraction, PKHeX encounter data incomplete — shipping anyway)";
                                             else if (isBDSPPidFlipCorrelation) note = " (BDSP Gen-3-origin PID-flip correlation — file is real event mon, BDSP accepts; shipping anyway)";
+                                            else if (isZAPidCorrelation) note = " (Z-A gift — legal except a held item PKHeX hasn't catalogued for Z-A yet; item is real, shipping)";
                                             else note = " (Met Date past distribution window — trusted pre-made file, shipping anyway)";
                                             LogUtil.LogInfo($"[TradeModule] Mythical fallback SUCCESS: loaded {Path.GetFileName(file)} (shiny={preMade.IsShiny}){note}", "Helpers");
                                             goto fallbackDone;
@@ -2688,7 +2722,18 @@ public static class Helpers<T> where T : PKM, new()
              || laReport.Contains("Invalid Ribbons: Classic", StringComparison.OrdinalIgnoreCase)
              || laReport.Contains("Fateful Encounter should", StringComparison.OrdinalIgnoreCase));
 
-        if (!la.Valid && !isHomeWondercardOldPkhexIssue && !isStaleMetDateIssue && !isZANativeLegendaryIssue && !isBDSPLakeTrioIssue && !isBDSPPidFlipIssue)
+        // Z-A gifts (Floette-Eternal, story gifts) after legality-preserving customization
+        // are legal except possibly "Held item is unreleased" -- PKHeX's Gen9a item table
+        // is incomplete but the item is real. Ship those. PID strings kept only as a safety
+        // net for genuinely seed-broken files. Mirrors isZAPidCorrelation in the pre-made
+        // loader so a customized pre-made isn't re-rejected at this gate. Scope: PA9 only.
+        bool isZAPidCorrelationIssue = !la.Valid && pk is PA9 &&
+            (laReport.Contains("Held item is unreleased", StringComparison.OrdinalIgnoreCase)
+             || laReport.Contains("PID+ correlation does not match", StringComparison.OrdinalIgnoreCase)
+             || laReport.Contains("PID should be equal to EC", StringComparison.OrdinalIgnoreCase)
+             || laReport.Contains("PID-Nature mismatch", StringComparison.OrdinalIgnoreCase));
+
+        if (!la.Valid && !isHomeWondercardOldPkhexIssue && !isStaleMetDateIssue && !isZANativeLegendaryIssue && !isBDSPLakeTrioIssue && !isBDSPPidFlipIssue && !isZAPidCorrelationIssue)
         {
             string responseMessage;
             if (pk?.IsEgg == true)

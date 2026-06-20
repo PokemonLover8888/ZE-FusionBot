@@ -589,9 +589,15 @@ public abstract class TradeExtensions<T> where T : PKM, new()
         // Other games (SV, SWSH, BDSP, PLA, LGPE) accept all standard items
         if (pkm is PA9)
         {
-            if (!ItemRestrictions.IsHeldItemAllowed(held, pkm.Context))
+            // Validate against EntityContext.Gen9, NOT pkm.Context. The Z-A item
+            // dropdown (ItemAutocompletePLZAHandler) offers items using the Gen9
+            // (SV) table, which is complete; PA9's own context table is incomplete
+            // in this PKHeX build and falsely rejects real Z-A items such as Choice
+            // Specs (the same gap that flags held items "unreleased"). Using Gen9
+            // here keeps the gate consistent with what the bot actually advertises.
+            if (!ItemRestrictions.IsHeldItemAllowed(held, EntityContext.Gen9))
                 return true;
-            if (TradeRestrictions.IsUntradableHeld(pkm.Context, held))
+            if (TradeRestrictions.IsUntradableHeld(EntityContext.Gen9, held))
                 return true;
         }
 
