@@ -585,24 +585,25 @@ public abstract class TradeExtensions<T> where T : PKM, new()
             return true;
         }
 
-        // Only enforce strict item restrictions for PA9 (Legends Z-A)
-        // Other games (SV, SWSH, BDSP, PLA, LGPE) accept all standard items
-        if (pkm is PA9)
-        {
-            // Validate against EntityContext.Gen9, NOT pkm.Context. The Z-A item
-            // dropdown (ItemAutocompletePLZAHandler) offers items using the Gen9
-            // (SV) table, which is complete; PA9's own context table is incomplete
-            // in this PKHeX build and falsely rejects real Z-A items such as Choice
-            // Specs (the same gap that flags held items "unreleased"). Using Gen9
-            // here keeps the gate consistent with what the bot actually advertises.
-            if (!ItemRestrictions.IsHeldItemAllowed(held, EntityContext.Gen9))
-                return true;
-            if (TradeRestrictions.IsUntradableHeld(EntityContext.Gen9, held))
-                return true;
-        }
+        // Legends Z-A (PA9): block ONLY Mega Stones and the Red/Blue Orb. Everything else is
+        // allowed — including Z-A's own items that aren't in the SV/Gen9 table (e.g. the
+        // "Hyper *" berries, IDs 2651+) and standard battle items like Choice Specs.
+        // IsHeldItemAllowed over-blocks against either context (Gen9 lacks the Hyper berries;
+        // PA9's own Gen9a table is incomplete for SV items), so we use an explicit blocklist.
+        if (pkm is PA9 && IsMegaStoneOrPrimalOrb((ushort)held))
+            return true;
 
         return false;
     }
+
+    /// <summary>Red/Blue Orb and every Mega Stone, by item ID. Eviolite (538), Black Augurite
+    /// (1691) and Meteorite (2554) end in "ite" but are NOT Mega Stones and stay allowed.</summary>
+    private static bool IsMegaStoneOrPrimalOrb(ushort item) =>
+        item is 534 or 535          // Red Orb, Blue Orb
+        || item is >= 656 and <= 685   // Gen6 Mega Stones (Gengarite..Latiosite)
+        || item is >= 752 and <= 764   // Gen6 Mega Stones (Swampertite..Diancite)
+        || item is >= 767 and <= 770   // Gen6 Mega Stones (Cameruptite..Beedrillite)
+        || item is >= 2559 and <= 2585; // Z-A Mega Stones (Clefablite..Drampanite)
 }
 
 // Add the missing method definition for 'SetHandlerandMemory' to the PKMExtensions class.  
