@@ -1500,7 +1500,41 @@ public static class Helpers<T> where T : PKM, new()
             }
         }
 
-        if (!la.Valid && pkm is PA9 && !isZAWildLegendary)
+        // Shiny Z-A native: ALM can't build native Z-A *shiny* wild encounters (PKHeX data
+        // gap), so it would fall back to SV/XY -> Non-Native (e.g. shiny Beldum/Bagon/Gible).
+        // Instead, build the native Z-A NON-shiny (which works) and force it shiny via PID
+        // recalc, KEEPING the native Z-A encounter + met location. Z-A wild shinies are legal
+        // in-game, so this is a real native shiny. General fix -- covers every Z-A-native
+        // species. Non-regressing: if no valid native base is produced, nativeZAShiny stays
+        // false and the SV fallback below runs exactly as before.
+        bool nativeZAShiny = false;
+        bool currentGoodNativeShiny = la.Valid && pkm is PA9 cgs && cgs.IsShiny && cgs.MetLocation is > 0 and <= 350;
+        if (template.Shiny && typeof(T) == typeof(PA9) && !isZAWildLegendary && !currentGoodNativeShiny)
+        {
+            try
+            {
+                var nsLines = set.GetSetLines().Where(l => !l.TrimStart().StartsWith("Shiny", StringComparison.OrdinalIgnoreCase));
+                var nsBase = sav.GetLegalForTrade(AutoLegalityWrapper.GetTemplate(new ShowdownSet(string.Join("\n", nsLines))), out _);
+                if (nsBase is PA9 nativePa9 && nativePa9.Species == template.Species && nativePa9.MetLocation is > 0 and <= 350)
+                {
+                    // Fix the cosmetic Height/Weight flag on the base if present (same as Sceptile).
+                    var nbReport = new LegalityAnalysis(nativePa9).Report();
+                    if (nbReport.Contains("Height", StringComparison.OrdinalIgnoreCase) && nbReport.Contains("Weight", StringComparison.OrdinalIgnoreCase))
+                    {
+                        nativePa9.HeightScalar = 128; nativePa9.WeightScalar = 128; nativePa9.Scale = 128;
+                    }
+                    nativePa9.SetShiny();
+                    nativePa9.RefreshChecksum();
+                    pkm = nativePa9;
+                    la = new LegalityAnalysis(pkm);
+                    nativeZAShiny = true;
+                    LogUtil.LogInfo($"[TradeModule] Z-A native {pkm.Species}: built native non-shiny then forced shiny (native encounter kept), valid now={la.Valid}", "Helpers");
+                }
+            }
+            catch (Exception ex) { LogUtil.LogError($"[TradeModule] Z-A native-shiny build failed: {ex.Message}", "Helpers"); }
+        }
+
+        if (!la.Valid && pkm is PA9 && !isZAWildLegendary && !nativeZAShiny)
         {
             var fallback = TryGetAsHomePa9(template, spec);
             if (fallback != null)
@@ -1513,11 +1547,38 @@ public static class Helpers<T> where T : PKM, new()
         // END OF PA9 CROSS-GAME HOME FALLBACK
         // ============================================================================
 
+        // Auto-correct EXACT Height/Weight/Scale when PKHeX states the expected value
+        // (e.g. a pre-made Magearna flagged "Invalid: Height should be 0"). Setting the
+        // value PKHeX wants makes the mon genuinely legal, so the receiving game accepts it
+        // cleanly -- instead of shipping a wrong value via the pre-made bypass below, which
+        // the game can reject and (in a batch) drop the whole batch. Uses the exact value
+        // from the report; if nothing matches, nothing changes -- so it can only improve.
+        if (!la.Valid && pkm is PA9 pa9ScaleFix)
+        {
+            var sr = la.Report();
+            bool setAny = false;
+            var mh = System.Text.RegularExpressions.Regex.Match(sr, @"Height should be (\d+)");
+            if (mh.Success && byte.TryParse(mh.Groups[1].Value, out var hv)) { pa9ScaleFix.HeightScalar = hv; setAny = true; }
+            var mw = System.Text.RegularExpressions.Regex.Match(sr, @"Weight should be (\d+)");
+            if (mw.Success && byte.TryParse(mw.Groups[1].Value, out var wv)) { pa9ScaleFix.WeightScalar = wv; setAny = true; }
+            var ms = System.Text.RegularExpressions.Regex.Match(sr, @"Scale should be (\d+)");
+            if (ms.Success && byte.TryParse(ms.Groups[1].Value, out var sv)) { pa9ScaleFix.Scale = sv; setAny = true; }
+            if (setAny)
+            {
+                pa9ScaleFix.RefreshChecksum();
+                la = new LegalityAnalysis(pkm);
+                LogUtil.LogInfo($"[TradeModule] PA9 {pkm.Species}: corrected Height/Weight/Scale to PKHeX-expected values (valid now={la.Valid})", "Helpers");
+            }
+        }
+
 
         // Pre-made files (mythical fallback) bypass the legality gate.
         // They're pre-validated by the file source and ship even if our PKHeX is
         // too old to recognize newer wondercard databases (HOME-simulated, etc.)
         bool isPreMadeBypass = result == "PreMadeFile";
+        // A forced native Z-A shiny is a real native catch; if PKHeX's incomplete Z-A shiny
+        // data flags it, ship it anyway (same as the other Z-A pre-made bypasses).
+        if (nativeZAShiny) isPreMadeBypass = true;
 
         // Mythical/legendary bypass: when ALM produces a valid encounter for a known
         // mythical/legendary species, ship it even if PKHeX flags Encounter/Ability/

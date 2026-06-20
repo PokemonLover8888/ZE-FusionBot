@@ -954,7 +954,10 @@ public partial class TradeModule<T> : ModuleBase<SocketCommandContext> where T :
                     }
                 }
 
-                await processingMessage.DeleteAsync();
+                // A deleted/expired "Processing..." message makes DeleteAsync throw Discord
+                // error 10008 (Unknown Message). Don't let that abort the whole batch — the
+                // status message is cosmetic; the trades must still run.
+                try { await processingMessage.DeleteAsync(); } catch { }
 
                 var batchTradeCode = Info.GetRandomTradeCode(userID);
 
