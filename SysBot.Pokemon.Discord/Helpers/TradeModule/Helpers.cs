@@ -829,8 +829,12 @@ public static class Helpers<T> where T : PKM, new()
                                                 // narrow held-item-only bypass below ships it. Everything else
                                                 // in this block is written the LEGALITY-PRESERVING way so the
                                                 // file stays genuinely legal (correct PID, no correlation flag).
-                                                if (set.HeldItem > 0)
-                                                    preMade.HeldItem = set.HeldItem;
+                                                // Apply the requested held item, and CLEAR any save-file leftover
+                                                // when none was requested — real-save Z-A extractions often carry
+                                                // a stray held item (e.g. a Master Ball the Floette was holding),
+                                                // which can't legally be held and would otherwise ship on the mon.
+                                                // set.HeldItem is 0 when the member didn't ask for one.
+                                                preMade.HeldItem = set.HeldItem;
 
                                                 // Nature — MINT only. A Z-A gift's actual Nature is locked to its
                                                 // Xoroshiro seed; overwriting pk.Nature breaks the PID correlation.
