@@ -654,6 +654,15 @@ public static class Helpers<T> where T : PKM, new()
                         fallbackCheck = false;
                         LogUtil.LogInfo($"[TradeModule] BDSP native mythical {template.Species}: using ALM native encounter, skipping pre-made file", "Helpers");
                     }
+                    bool svNativeMeloetta = typeof(T) == typeof(PK9) && template.Species == 648;
+                    if (svNativeMeloetta && !template.Shiny
+                        && pkm != null && pkm.Species == template.Species
+                        && new LegalityAnalysis(pkm).Valid
+                        && (pkm is not IHomeTrack svMelHt || svMelHt.Tracker == 0))
+                    {
+                        fallbackCheck = false;
+                        LogUtil.LogInfo($"[TradeModule] SV native Meloetta: using ALM native catch (no HOME tracker), skipping Worlds18 pre-made", "Helpers");
+                    }
                     LogUtil.LogInfo($"[TradeModule] DIAG fallback-gate: pkm-null={pkm == null} speciesMatch={(pkm != null && pkm.Species == template.Species)} fallbackCheck={fallbackCheck}", "Helpers");
 
                     // Z-A native check: if ALM produced a PA9 with a Z-A met location for a
@@ -1415,7 +1424,14 @@ public static class Helpers<T> where T : PKM, new()
         // on upload because the tracker isn't server-registered. ALM already produces a valid
         // tracker-less PA8 here, so just skip the add and AutoOT applies cleanly.
         bool isPLANativeCatch = pkm is PA8 && pkm.MetLocation is > 0 and < 30000;
-        if (la.Valid && pkm is IHomeTrack { HasTracker: false } homeTrack && !isZANativeFreshCatch && !isBDSPNativeCatch && !isSWSHNativeCatch && !isPLANativeCatch)
+        // Same exemption for SV native catches — e.g. the Blueberry Academy (Indigo Disk)
+        // Meloetta at Coastal Biome (EncounterStatic9, met loc 176, Scale 128). The member
+        // catches it in-game, so no HOME tracker exists; fabricating one makes the file
+        // contradictory (native catch + HOME tracker) and PKHeX then can't match the
+        // origin-game encounter ("Unable to match an encounter from origin game"). ALM
+        // already produces a valid tracker-less PK9, so skip the add.
+        bool isSVNativeCatch = pkm is PK9 && pkm.MetLocation is > 0 and < 30000;
+        if (la.Valid && pkm is IHomeTrack { HasTracker: false } homeTrack && !isZANativeFreshCatch && !isBDSPNativeCatch && !isSWSHNativeCatch && !isPLANativeCatch && !isSVNativeCatch)
         {
             // Mythicals/events typically distributed via HOME - need a HOME tracker for legality
             ushort[] homeTrackedSpecies =
