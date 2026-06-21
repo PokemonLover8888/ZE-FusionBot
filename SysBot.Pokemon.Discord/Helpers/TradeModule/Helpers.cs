@@ -637,22 +637,29 @@ public static class Helpers<T> where T : PKM, new()
                     // cleanly because the pre-made's encounter is non-fixed-OT.
                     if (isGoMyth)
                         fallbackCheck = true;
-                    // EXCEPTION: BDSP natively catches Shaymin (Oak's Letter → Flower Paradise),
-                    // Darkrai (Member Card → Newmoon Island) and Arceus (Azure Flute → Hall of
-                    // Origin). These are in-game STATIC catches with the player's own OT, so the
-                    // fixed-OT/AutoOT trap above doesn't apply — AutoOT swaps cleanly. For a
-                    // NON-SHINY request, prefer ALM's native EncounterStatic8b over the pre-made
-                    // file (the pre-made PB8s are PLA/Gen8a transplants that show "Non-Native &
-                    // Has Home Tracker"). Only un-forces the fallback when ALM already produced a
-                    // VALID native Pokémon — if ALM fails, isGoMyth keeps fallbackCheck=true and
-                    // the pre-made file is still used, so this can only improve, never regress.
-                    bool bdspNativeMythical = typeof(T) == typeof(PB8) && template.Species is 491 or 492 or 493;
-                    if (bdspNativeMythical && !template.Shiny
+                    // EXCEPTION: several mythicals are natively obtainable in BDSP with the
+                    // player's own OT (in-game static catch or gift/egg), so AutoOT swaps
+                    // cleanly and we should prefer ALM's native encounter over the pre-made
+                    // file (the pre-made PB8s are PLA/Gen8a transplants that show "Non-Native
+                    // & Has Home Tracker"). Only un-forces the fallback when ALM already
+                    // produced a VALID native mon — if ALM fails, isGoMyth keeps
+                    // fallbackCheck=true and the pre-made is used, so this can only improve.
+                    //
+                    // Verified via PKHeX (BDSP priority, EncounterStatic8b/WB8/EncounterEgg8b):
+                    //   Shaymin (492) / Darkrai (491) / Arceus (493): shiny=Random — native for
+                    //     BOTH shiny and non-shiny.
+                    //   Manaphy (490) / Phione (489): the BDSP Manaphy gift is shiny-locked, so
+                    //     ONLY non-shiny is native; a shiny request must keep using the pre-made.
+                    // (491/493 aren't in IsGoShinyMythical so they already ship native; listed
+                    // here too for robustness — harmless.)
+                    bool bdspNativeAnyShiny = typeof(T) == typeof(PB8) && template.Species is 491 or 492 or 493;
+                    bool bdspNativeNonShinyOnly = typeof(T) == typeof(PB8) && (template.Species is 489 or 490) && !template.Shiny;
+                    if ((bdspNativeAnyShiny || bdspNativeNonShinyOnly)
                         && pkm != null && pkm.Species == template.Species
                         && new LegalityAnalysis(pkm).Valid)
                     {
                         fallbackCheck = false;
-                        LogUtil.LogInfo($"[TradeModule] BDSP native mythical {template.Species}: using ALM native encounter, skipping pre-made file", "Helpers");
+                        LogUtil.LogInfo($"[TradeModule] BDSP native mythical {template.Species} (shiny={template.Shiny}): using ALM native encounter, skipping pre-made file", "Helpers");
                     }
                     bool svNativeMeloetta = typeof(T) == typeof(PK9) && template.Species == 648;
                     if (svNativeMeloetta && !template.Shiny
