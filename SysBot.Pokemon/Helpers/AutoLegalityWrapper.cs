@@ -338,6 +338,31 @@ public static class AutoLegalityWrapper
         }
     }
 
+    /// <summary>
+    /// Generates allowing encounters from ANY game (overrides the host's NativeOnly
+    /// GameVersionPriority). Needed for cross-gen-only event mons that have NO native
+    /// encounter in the bot's game — e.g. Ash-Greninja (Greninja form 1 / Battle Bond),
+    /// which only exists as a Gen-7 Sun/Moon event. With NativeOnly, ALM can't reach that
+    /// event and fails; searching all games (newest first) lets it pull the legitimate
+    /// event. Intended as a retry only after native generation fails.
+    /// </summary>
+    public static PKM GetLegalForTradeAnyGame(this ITrainerInfo sav, IBattleTemplate template, out string res)
+    {
+        lock (_almPriorityLock)
+        {
+            var previousType = APILegality.GameVersionPriority;
+            try
+            {
+                APILegality.GameVersionPriority = GameVersionPriorityType.NewestFirst;
+                return sav.GetLegal(template, out res);
+            }
+            finally
+            {
+                APILegality.GameVersionPriority = previousType;
+            }
+        }
+    }
+
     public static ITrainerInfo GetTrainerInfo<T>() where T : PKM, new()
     {
         ITrainerInfo trainerInfo;

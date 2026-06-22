@@ -558,6 +558,23 @@ public static class Helpers<T> where T : PKM, new()
                     ? sav.GetLegalForTradeRaidPriority(template, out result)
                     : sav.GetLegalForTrade(template, out result);
 
+                // The host runs NativeOnly game priority (keeps trades native to the bot's game).
+                // That blocks cross-gen-only event mons with NO native encounter — e.g.
+                // Ash-Greninja (Greninja form 1 / Battle Bond), a Gen-7 Sun/Moon event. When
+                // native generation fails, retry allowing all games so ALM can pull the
+                // legitimate event. Only applied on failure and only kept if the result is valid,
+                // so it can't regress normal native trades.
+                if (!wantsRaidMark && (result == "Failed" || pkm == null))
+                {
+                    var anyGame = sav.GetLegalForTradeAnyGame(template, out var anyResult);
+                    if (anyGame != null && anyGame.Species == template.Species && new LegalityAnalysis(anyGame).Valid)
+                    {
+                        pkm = anyGame;
+                        result = anyResult;
+                        LogUtil.LogInfo($"[TradeModule] {template.Species}: native gen failed, used cross-game encounter (e.g. older-gen event)", "Helpers");
+                    }
+                }
+
                 // BDSP legendary met location override: ALM tends to pick roaming/event
                 // encounter slots that produce the wrong met location (e.g. Valley Windworks
                 // for Cresselia, Newmoon Island-2 for Darkrai). Force canonical locations —
@@ -2021,10 +2038,12 @@ public static class Helpers<T> where T : PKM, new()
             888 => userWantsShiny ? (100, true, (byte?)0) : (70, false, (byte?)0),
             // Zamazenta: story lv70 Hero non-shiny, wondercard 1645 lv100 Hero shiny
             889 => userWantsShiny ? (100, true, (byte?)0) : (70, false, (byte?)0),
-            // Kubfu: IoA gift lv10, non-shiny only (no legal shiny)
-            891 => (10, false, (byte?)null),
-            // Urshifu: IoA evolution from Kubfu, lv80 typically
-            892 => (80, false, (byte?)null),
+            // Kubfu (891) / Urshifu (892) are NOT SwSh-only: the Indigo Disk DLC added them
+            // natively to SV (EncounterStatic9 at North Province (Area Two), met loc 48, the
+            // player's own OT, no HOME tracker). Routing them through SwSh -> HOME -> PK9 made
+            // them "Non-Native & Has Home Tracker" (AutoOT skipped) and HOME rejected them on
+            // upload. Removed so ALM generates the native SV encounter. Verified: Kubfu +
+            // Urshifu (both forms) come out SV-native, tracker-free, valid.
             // Regirock / Regice / Registeel: Crown Tundra Dynamax Adventures lv70, shiny allowed
             377 => (70, userWantsShiny, (byte?)null),
             378 => (70, userWantsShiny, (byte?)null),
