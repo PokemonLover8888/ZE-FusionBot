@@ -29,14 +29,33 @@ public class TradeCodeStorage
         LoadFromFile();
         if (_tradeCodeDetails!.TryGetValue(trainerID, out var details))
         {
-            details.TradeCount++;
-            SaveToFile();
+            // NOTE: do NOT increment TradeCount here. GetTradeCode runs at the START of every
+            // $t/$bt command (to assign the link code), BEFORE the set is parsed/validated — so
+            // counting here charged the user for format mistakes / illegal mons / blocked
+            // requests too, breaking the "Mistakes are free — cooldowns only apply to completed
+            // trades" promise. The count is now bumped only on actual completion via
+            // IncrementCompletedTrades (called from DiscordTradeNotifier.TradeFinished).
             return details.Code;
         }
         var code = GenerateRandomTradeCode();
-        _tradeCodeDetails![trainerID] = new TradeCodeDetails { Code = code, TradeCount = 1 };
+        _tradeCodeDetails![trainerID] = new TradeCodeDetails { Code = code, TradeCount = 0 };
         SaveToFile();
         return code;
+    }
+    /// <summary>Increment a user's trade count. Call ONLY when a trade successfully ENTERS the
+    /// queue (QueueResultAdd.Added) — never at command submission — so format mistakes, illegal
+    /// mons, blocked items and queue rejections don't count ("Mistakes are free").</summary>
+    public int IncrementTradeCount(ulong trainerID)
+    {
+        LoadFromFile();
+        if (!_tradeCodeDetails!.TryGetValue(trainerID, out var details))
+        {
+            details = new TradeCodeDetails { Code = GenerateRandomTradeCode(), TradeCount = 0 };
+            _tradeCodeDetails[trainerID] = details;
+        }
+        details.TradeCount++;
+        SaveToFile();
+        return details.TradeCount;
     }
     public int GetTradeCount(ulong trainerID)
     {

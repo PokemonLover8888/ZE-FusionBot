@@ -142,6 +142,13 @@ public static class QueueHelper<T> where T : PKM, new()
         if (SysCord<T>.Runner.Config.Trade.TradeConfiguration.StoreTradeCodes)
         {
             var tradeCodeStorage = new TradeCodeStorage();
+            // Count the trade ONLY when it actually entered the queue (Added). Format mistakes /
+            // illegal mons returned long before this, and queue rejections (AlreadyInQueue /
+            // QueueFull / NotAllowedItem) returned above — so "Mistakes are free" finally holds.
+            // (The count used to bump at code-fetch, i.e. the start of every $t, charging users
+            // for mistakes too.) A batch counts once (one queue entry).
+            if (added == QueueResultAdd.Added)
+                tradeCodeStorage.IncrementTradeCount(trader.Id);
             totalTradeCount = tradeCodeStorage.GetTradeCount(trader.Id);
             tradeDetails = tradeCodeStorage.GetTradeDetails(trader.Id);
         }
@@ -409,6 +416,13 @@ public static class QueueHelper<T> where T : PKM, new()
         if (SysCord<T>.Runner.Config.Trade.TradeConfiguration.StoreTradeCodes)
         {
             var tradeCodeStorage = new TradeCodeStorage();
+            // Count the trade ONLY when it actually entered the queue (Added). Format mistakes /
+            // illegal mons returned long before this, and queue rejections (AlreadyInQueue /
+            // QueueFull / NotAllowedItem) returned above — so "Mistakes are free" finally holds.
+            // (The count used to bump at code-fetch, i.e. the start of every $t, charging users
+            // for mistakes too.) A batch counts once (one queue entry).
+            if (added == QueueResultAdd.Added)
+                tradeCodeStorage.IncrementTradeCount(trader.Id);
             totalTradeCount = tradeCodeStorage.GetTradeCount(trader.Id);
             tradeDetails = tradeCodeStorage.GetTradeDetails(trader.Id);
         }
