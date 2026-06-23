@@ -575,6 +575,25 @@ public static class Helpers<T> where T : PKM, new()
                     }
                 }
 
+                // Z-A: max Scale (255) requires Alpha. PKHeX's Z-A data is incomplete and does
+                // NOT enforce this, so a member who sets .Scale=255 without Alpha gets a non-alpha
+                // size-255 mon that reads "valid" locally but Pokémon HOME rejects on deposit.
+                // When that happens, regenerate the same set as an Alpha (which legitimately is
+                // size 255), and use it only if it comes out a valid Alpha — otherwise keep the
+                // original (e.g. a species with no Alpha encounter).
+                if (pkm is PA9 { Scale: 255, IsAlpha: false }
+                    && !contentWithoutLanguage.Contains("Alpha:", StringComparison.OrdinalIgnoreCase))
+                {
+                    var alphaTemplate = AutoLegalityWrapper.GetTemplate(new ShowdownSet(contentWithoutLanguage + "\nAlpha: Yes"));
+                    var alphaPkm = sav.GetLegalForTrade(alphaTemplate, out var alphaResult);
+                    if (alphaPkm is PA9 { IsAlpha: true, Scale: 255 } && new LegalityAnalysis(alphaPkm).Valid)
+                    {
+                        pkm = alphaPkm;
+                        result = alphaResult;
+                        LogUtil.LogInfo($"[TradeModule] Z-A {pkm.Species}: Scale 255 forced Alpha (size 255 must be Alpha for HOME)", "Helpers");
+                    }
+                }
+
                 // BDSP legendary met location override: ALM tends to pick roaming/event
                 // encounter slots that produce the wrong met location (e.g. Valley Windworks
                 // for Cresselia, Newmoon Island-2 for Darkrai). Force canonical locations —
