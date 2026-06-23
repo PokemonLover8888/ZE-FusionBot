@@ -204,12 +204,22 @@ public static class AutoLegalityWrapper
         try
         {
             EncounterMovesetGenerator.PriorityList = s_wildAndEggPriority;
-            var pk = sav.GetLegal(template, out _);
+            // Use GetLegalForTrade (not plain GetLegal) so the wild/egg search keeps the bot's
+            // NATIVE game priority (ZA/BDSP/PLA). Otherwise the swap could pull a wild encounter
+            // from a different game — e.g. a Z-A bot swapping a native Z-A NPC-trade Riolu for a
+            // non-native SV wild Riolu (South Province), which then "Cannot enter HOME".
+            var pk = sav.GetLegalForTrade(template, out _);
             if (pk == null)
                 return null;
 
             var la = new LegalityAnalysis(pk);
             if (!la.Valid || IsFixedOT(la.EncounterOriginal, pk))
+                return null;
+
+            // NEVER swap to a non-native wild encounter. If the only non-fixed-OT alternative is
+            // from another game (context mismatch), keep the original native encounter instead —
+            // a native fixed-OT mon is HOME-legal; a non-native one is not.
+            if (la.EncounterOriginal.Context != pk.Context)
                 return null;
 
             return pk;
