@@ -64,6 +64,10 @@ public static class QueueHelper<T> where T : PKM, new()
         if (added != QueueResultAdd.Added)
             return false;
 
+        // Re-store under the NEW id so the chain continues: when this replayed trade completes,
+        // its own "Trade Again"/"Re-queue" button (which carries newId) can replay it once more.
+        RememberForRequeue(newId, e with { StoredUtc = DateTime.UtcNow });
+
         notifier.UpdateUniqueTradeID(newId);
         await EmbedHelper.SendTradeCodeEmbedAsync(user, code).ConfigureAwait(false);
         return true;

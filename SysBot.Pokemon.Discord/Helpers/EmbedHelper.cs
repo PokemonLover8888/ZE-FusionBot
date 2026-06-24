@@ -195,7 +195,7 @@ public static class EmbedHelper
             case "searching":
                 return null;
             case "complete":
-                builder.WithButton("Trade Again", $"trade_again:{userId}", ButtonStyle.Success, new Emoji("\ud83d\udd01"));
+                builder.WithButton("Trade Again", $"trade_again:{userId}:{uniqueTradeId}", ButtonStyle.Success, new Emoji("\ud83d\udd01"));
                 builder.WithButton("Dismiss", $"trade_close:{userId}", ButtonStyle.Secondary, new Emoji("\ud83d\uddd1\ufe0f"));
                 break;
             case "canceled":

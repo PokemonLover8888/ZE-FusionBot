@@ -600,13 +600,31 @@ public sealed partial class SysCord<T> where T : PKM, new()
             }
             else if (customId.StartsWith("trade_again:"))
             {
-                var commandPrefix = Runner.Config.Discord.CommandPrefix;
-                await component.RespondAsync(
-                    $"To trade again, use the `{commandPrefix}trade` command or the `/trade` slash command in the server channel!",
-                    ephemeral: !isDm).ConfigureAwait(false);
+                // customId: trade_again:{userId}:{uniqueTradeId} — re-submit the SAME Pokemon
+                // automatically (no retyping), exactly like the Re-queue button. Older messages
+                // may carry the legacy 2-part id (trade_again:{userId}); those fall back to the
+                // instruction text since there's no stored trade to replay.
+                await component.DeferAsync().ConfigureAwait(false);
+                var parts = customId.Split(':');
+                bool requeued = false;
+                if (parts.Length >= 3 && int.TryParse(parts[2], out var againTradeId))
+                    requeued = await QueueHelper<T>.RequeueByIdAsync(againTradeId, component.User).ConfigureAwait(false);
 
                 if (component.Message != null)
                     await component.Message.ModifyAsync(m => m.Components = new ComponentBuilder().Build()).ConfigureAwait(false);
+
+                if (requeued)
+                {
+                    await component.FollowupAsync("🔁 Trading again! A fresh link code is on its way — enter it quickly.", ephemeral: !isDm).ConfigureAwait(false);
+                }
+                else
+                {
+                    var commandPrefix = Runner.Config.Discord.CommandPrefix;
+                    await component.FollowupAsync(
+                        $"Couldn't re-trade automatically (the request expired or you're already in the queue). " +
+                        $"Please re-run `{commandPrefix}trade` or `/trade`.",
+                        ephemeral: !isDm).ConfigureAwait(false);
+                }
             }
             else if (customId.StartsWith("trade_cancel:"))
             {

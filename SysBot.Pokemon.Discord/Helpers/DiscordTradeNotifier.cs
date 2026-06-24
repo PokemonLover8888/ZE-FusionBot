@@ -369,7 +369,12 @@ public class DiscordTradeNotifier<T> : IPokeTradeNotifier<T>, IDisposable
         // need the user ID (trade_again:{userId} / trade_close:{userId}), so the unique trade ID
         // isn't required here.
         if (TotalBatchTrades <= 1)
-            EmbedHelper.SendTradeFinishedEmbedAsync(Trader, message, Data, IsMysteryEgg).ConfigureAwait(false);
+        {
+            // Carry the REAL unique trade ID so the "Trade Again" button (trade_again:{userId}:{id})
+            // can auto re-submit the same Pokemon — same key it was stored under in AddToTradeQueue.
+            var finishedData = TradeEmbedDataBuilder.Build(Data, Code, Trader.Id, info.UniqueTradeID, BatchTradeNumber, TotalBatchTrades, IsMysteryEgg);
+            EmbedHelper.SendTradeFinishedEmbedAsync(Trader, finishedData).ConfigureAwait(false);
+        }
         else
             Trader.SendMessageAsync(message).ConfigureAwait(false);
 
