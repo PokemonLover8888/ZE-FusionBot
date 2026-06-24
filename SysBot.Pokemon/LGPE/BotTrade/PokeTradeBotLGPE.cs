@@ -263,6 +263,7 @@ public class PokeTradeBotLGPE(PokeTradeHub<PB7> Hub, PokeBotState Config) : Poke
                 {
                     toSend = updatedToSend;
                     poke.TradeData = updatedToSend;
+                    poke.Notifier.UpdatePokemonData(toSend); // reflect AutoOT'd OT in the completion embed
                 }
             }
         }

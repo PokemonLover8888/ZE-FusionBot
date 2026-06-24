@@ -15,6 +15,13 @@ public interface IPokeTradeNotifier<T> where T : PKM, new()
     /// <summary> Updates the batch progress for batch trades. </summary>
     void UpdateBatchProgress(int currentBatchNumber, T currentPokemon, int uniqueTradeID);
 
+    /// <summary>
+    /// Replaces the Pokémon the completion embeds are built from. Called right after AutoOT
+    /// (UseTradePartnerInfo) rewrites OT/TID/SID so the "Trade Complete" DM shows the receiver's
+    /// real OT instead of the generation default. Display only; default no-op for non-Discord notifiers.
+    /// </summary>
+    void UpdatePokemonData(T data) { }
+
     /// <summary> Sends a notification when called with parameters. </summary>
     void SendNotification(PokeRoutineExecutor<T> routine, PokeTradeDetail<T> info, string message);
 

@@ -833,6 +833,7 @@ public class PokeTradeBotLA(PokeTradeHub<PA8> Hub, PokeBotState Config) : PokeRo
         if (Hub.Config.Legality.UseTradePartnerInfo && !poke.IgnoreAutoOT)
         {
             toSend = await ApplyAutoOT(toSend, tradePartner, sav, token);
+            poke.Notifier.UpdatePokemonData(toSend); // reflect AutoOT'd OT in the completion embed
         }
 
         // Check if the offered Pokemon will evolve upon trade BEFORE confirming

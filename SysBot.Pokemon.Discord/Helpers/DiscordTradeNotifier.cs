@@ -68,6 +68,17 @@ public class DiscordTradeNotifier<T> : IPokeTradeNotifier<T>, IDisposable
         _uniqueTradeID = uniqueTradeID;
     }
 
+    /// <summary>
+    /// Replace the Pokémon the embeds are built from. Called by the trade bots right after
+    /// AutoOT (UseTradePartnerInfo) rewrites the OT/TID/SID, so the "Trade Complete" DM embed
+    /// shows the receiver's real OT instead of the generation default (e.g. "FreeMons.Org").
+    /// Display only — the actual traded Pokémon is unaffected.
+    /// </summary>
+    public void UpdatePokemonData(T data)
+    {
+        Data = data;
+    }
+
     private int GetUniqueTradeID()
     {
         // Generate a unique trade ID using timestamp or another method

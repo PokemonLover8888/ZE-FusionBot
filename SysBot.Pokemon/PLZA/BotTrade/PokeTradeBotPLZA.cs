@@ -1437,6 +1437,7 @@ public class PokeTradeBotPLZA(PokeTradeHub<PA9> Hub, PokeBotState Config) : Poke
                 toSend.Language = originalLanguage;
                 toSend.RefreshChecksum();
             }
+            poke.Notifier.UpdatePokemonData(toSend); // reflect AutoOT'd OT in the completion embed
 
             // Give game time to refresh trade offer display with AutoOT Pokemon
             await Task.Delay(3_000, token).ConfigureAwait(false);

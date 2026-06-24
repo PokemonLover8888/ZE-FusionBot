@@ -1065,6 +1065,7 @@ public class PokeTradeBotBS : PokeRoutineExecutor8BS, ICountBot, ITradeBot, IDis
         if (Hub.Config.Legality.UseTradePartnerInfo && !poke.IgnoreAutoOT)
         {
             toSend = await ApplyAutoOT(toSend, sav, tradePartner?.TrainerName ?? string.Empty, (uint)tid, (uint)sid, token);
+            poke.Notifier.UpdatePokemonData(toSend); // reflect AutoOT'd OT in the completion embed
         }
 
         await Task.Delay(2_000, token).ConfigureAwait(false);

@@ -1610,6 +1610,7 @@ public class PokeTradeBotSV(PokeTradeHub<PK9> Hub, PokeBotState Config) : PokeRo
                 toSend.Language = originalLanguage;
                 toSend.RefreshChecksum();
             }
+            poke.Notifier.UpdatePokemonData(toSend); // reflect AutoOT'd OT in the completion embed
         }
         // Wait for user input...
         var offered = await ReadUntilPresent(TradePartnerOfferedOffset, 25_000, 1_000, BoxFormatSlotSize, token).ConfigureAwait(false);

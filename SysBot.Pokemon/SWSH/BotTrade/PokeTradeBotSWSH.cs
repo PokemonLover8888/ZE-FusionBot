@@ -818,6 +818,7 @@ public class PokeTradeBotSWSH(PokeTradeHub<PK8> hub, PokeBotState config) : Poke
         if (hub.Config.Legality.UseTradePartnerInfo && !poke.IgnoreAutoOT)
         {
             toSend = await ApplyAutoOT(toSend, trainerName, sav, token);
+            poke.Notifier.UpdatePokemonData(toSend); // reflect AutoOT'd OT in the completion embed
         }
 
         // Confirm Box 1 Slot 1
