@@ -574,15 +574,29 @@ public sealed partial class SysCord<T> where T : PKM, new()
             }
             else if (customId.StartsWith("trade_requeue:"))
             {
-                var commandPrefix = Runner.Config.Discord.CommandPrefix;
-                await component.RespondAsync(
-                    $"To re-queue, use the `{commandPrefix}trade` command or the `/trade` slash command in the server channel.\n" +
-                    $"Your previous trade details are not retained — please submit a new request!",
-                    ephemeral: !isDm).ConfigureAwait(false);
+                // customId: trade_requeue:{userId}:{uniqueTradeId} — replay the stored trade.
+                await component.DeferAsync().ConfigureAwait(false);
+                var parts = customId.Split(':');
+                bool requeued = false;
+                if (parts.Length >= 3 && int.TryParse(parts[2], out var uniqueTradeId))
+                    requeued = await QueueHelper<T>.RequeueByIdAsync(uniqueTradeId, component.User).ConfigureAwait(false);
 
-                // Remove buttons from the original message
+                // Remove buttons from the original message either way.
                 if (component.Message != null)
                     await component.Message.ModifyAsync(m => m.Components = new ComponentBuilder().Build()).ConfigureAwait(false);
+
+                if (requeued)
+                {
+                    await component.FollowupAsync("🔄 Re-queued! A fresh link code is on its way — enter it quickly.", ephemeral: !isDm).ConfigureAwait(false);
+                }
+                else
+                {
+                    var commandPrefix = Runner.Config.Discord.CommandPrefix;
+                    await component.FollowupAsync(
+                        $"Couldn't re-queue automatically (the request expired or you're already in the queue). " +
+                        $"Please re-run `{commandPrefix}trade` or `/trade`.",
+                        ephemeral: !isDm).ConfigureAwait(false);
+                }
             }
             else if (customId.StartsWith("trade_again:"))
             {

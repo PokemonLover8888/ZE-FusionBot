@@ -23,6 +23,52 @@ public static class QueueHelper<T> where T : PKM, new()
 {
     private const uint MaxTradeCode = 9999_9999;
 
+    // Re-queue support: remember each queued trade's details (keyed by its unique ID) so the
+    // "Re-queue" button in the DM can replay it automatically — no retyping. Bounded by a 1-hour
+    // TTL (pruned on every store) so it can't grow without limit.
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, RequeueEntry> _requeueStore = new();
+    private sealed record RequeueEntry(T Pk, string TrainerName, RequestSignificance Sig, PokeTradeType TradeType,
+        List<Pictocodes>? Lgcode, bool IsHiddenTrade, bool IsMysteryEgg, bool IgnoreAutoOT, bool SetEdited,
+        bool IsNonNative, DateTime StoredUtc);
+
+    private static void RememberForRequeue(int uniqueTradeId, RequeueEntry entry)
+    {
+        var cutoff = DateTime.UtcNow.AddHours(-1);
+        foreach (var kv in _requeueStore)
+            if (kv.Value.StoredUtc < cutoff)
+                _requeueStore.TryRemove(kv.Key, out _);
+        _requeueStore[uniqueTradeId] = entry;
+    }
+
+    /// <summary>Re-submit a previously-queued trade (the "Re-queue" DM button) using the stored
+    /// details — no retyping. Returns false if the request expired, is unknown, or the user is
+    /// already in the queue. On success, DMs the user a fresh link code.</summary>
+    public static async Task<bool> RequeueByIdAsync(int uniqueTradeId, SocketUser user)
+    {
+        if (!_requeueStore.TryRemove(uniqueTradeId, out var e) || e.StoredUtc < DateTime.UtcNow.AddHours(-1))
+            return false;
+        if (!await Helpers<T>.EnsureUserNotInQueueAsync(user.Id).ConfigureAwait(false))
+            return false;
+
+        var hub = SysCord<T>.Runner.Hub;
+        var Info = hub.Queues.Info;
+        var code = Info.GetRandomTradeCode(user.Id);
+        var lg = e.Lgcode ?? new List<Pictocodes>();
+        var trainer = new PokeTradeTrainerInfo(e.TrainerName, user.Id);
+        var notifier = new DiscordTradeNotifier<T>(e.Pk, trainer, code, user, 1, 1, e.IsMysteryEgg, lgcode: lg);
+        int newId = GenerateUniqueTradeID();
+        var detail = new PokeTradeDetail<T>(e.Pk, trainer, notifier, PokeTradeType.Specific, code,
+            e.Sig == RequestSignificance.Favored, lg, 1, 1, e.IsMysteryEgg, e.IsHiddenTrade, newId, e.IgnoreAutoOT, e.SetEdited);
+        var trade = new TradeEntry<T>(detail, user.Id, PokeRoutineType.LinkTrade, user.Username, newId);
+        var added = Info.AddToTradeQueue(trade, user.Id, false, e.Sig == RequestSignificance.Owner);
+        if (added != QueueResultAdd.Added)
+            return false;
+
+        notifier.UpdateUniqueTradeID(newId);
+        await EmbedHelper.SendTradeCodeEmbedAsync(user, code).ConfigureAwait(false);
+        return true;
+    }
+
     private static readonly Dictionary<int, string> MilestoneImages = new()
     {
         { 1, "https://raw.githubusercontent.com/Secludedly/ZE-FusionBot-Sprite-Images/main/001.png" },
@@ -136,6 +182,11 @@ public static class QueueHelper<T> where T : PKM, new()
             discordNotifier.UpdateUniqueTradeID(uniqueTradeID);
             await discordNotifier.SendInitialQueueUpdate().ConfigureAwait(false);
         }
+
+        // Remember this trade so the "Re-queue" DM button can replay it automatically (no retyping).
+        if (added == QueueResultAdd.Added)
+            RememberForRequeue(uniqueTradeID, new RequeueEntry(pk, trainerName, sig, t, lgcode,
+                isHiddenTrade, isMysteryEgg, ignoreAutoOT, setEdited, isNonNative, DateTime.UtcNow));
 
         int totalTradeCount = 0;
         TradeCodeStorage.TradeCodeDetails? tradeDetails = null;
