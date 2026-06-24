@@ -1397,6 +1397,16 @@ public partial class TradeModule<T> : ModuleBase<SocketCommandContext> where T :
                     ignoreAutoOT: ignoreAutoOT,
                     isNonNative: processed.IsNonNative
                 );
+
+                // If the requested level was raised because the chosen moves can't be learned
+                // that low, tell the member why their mon's level differs from what they typed.
+                if (!string.IsNullOrEmpty(processed.LevelAdjustedNote))
+                {
+                    await Helpers<T>.ReplyAndDeleteAsync(
+                        Context,
+                        $"ℹ️ {Context.User.Mention} {processed.LevelAdjustedNote}",
+                        20);
+                }
             }
             catch (Exception ex)
             {

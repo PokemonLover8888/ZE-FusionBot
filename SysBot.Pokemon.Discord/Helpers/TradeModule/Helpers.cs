@@ -1686,12 +1686,13 @@ public static class Helpers<T> where T : PKM, new()
         // Validity is monotonic in level, so binary-search the lowest legal level in [met, current],
         // then honor the requested level when it's >= that floor, else use the floor (the closest
         // legal level to what was asked). Called on the NON-shiny base (where .Valid is reliable;
-        // PKHeX's incomplete Z-A shiny data would otherwise read invalid at every level).
-        static void ApplyLowestLegalLevel(PKM pk, int requestedLevel)
+        // PKHeX's incomplete Z-A shiny data would otherwise read invalid at every level). Returns
+        // the final level so the caller can note when it had to be raised above the request.
+        static int ApplyLowestLegalLevel(PKM pk, int requestedLevel)
         {
             byte met = pk.MetLevel < 1 ? (byte)1 : pk.MetLevel;
             int hi = pk.CurrentLevel;
-            if (hi <= met) return;
+            if (hi <= met) return pk.CurrentLevel;
             int lo = met, h = hi, lowestValid = hi;
             while (lo <= h)
             {
@@ -1704,7 +1705,11 @@ public static class Helpers<T> where T : PKM, new()
             int target = (requestedLevel >= lowestValid && requestedLevel <= 100) ? requestedLevel : lowestValid;
             pk.CurrentLevel = (byte)target;
             pk.RefreshChecksum();
+            return target;
         }
+        // When the clamp raises the level above what the member typed, capture a friendly note so
+        // the trade reply can explain WHY (their move list can't exist at that level).
+        string? levelAdjustNote = null;
 
         if (template.Shiny && typeof(T) == typeof(PA9) && !isZAWildLegendary && !currentGoodNativeShiny)
         {
@@ -1734,7 +1739,9 @@ public static class Helpers<T> where T : PKM, new()
                     }
                     // Honor the requested level (clamped up to the lowest level the moves allow)
                     // instead of the stripped-out default of 100. Done while still non-shiny.
-                    ApplyLowestLegalLevel(nativePa9, reqLevel);
+                    var shinyFinalLvl = ApplyLowestLegalLevel(nativePa9, reqLevel);
+                    if (reqLevel > 0 && shinyFinalLvl > reqLevel)
+                        levelAdjustNote = $"The moves you chose can't be learned at **Level {reqLevel}**, so your {spec} was set to **Level {shinyFinalLvl}** — the lowest level those moves are legal at. A lower level only works with level-appropriate moves.";
                     nativePa9.SetShiny();
                     nativePa9.RefreshChecksum();
                     pkm = nativePa9;
@@ -1768,7 +1775,9 @@ public static class Helpers<T> where T : PKM, new()
                 {
                     // Honor the requested level (clamped up to the lowest level the moves allow)
                     // instead of the stripped-out default of 100.
-                    ApplyLowestLegalLevel(nativeNL, reqLevel);
+                    var nlFinalLvl = ApplyLowestLegalLevel(nativeNL, reqLevel);
+                    if (reqLevel > 0 && nlFinalLvl > reqLevel)
+                        levelAdjustNote = $"The moves you chose can't be learned at **Level {reqLevel}**, so your {spec} was set to **Level {nlFinalLvl}** — the lowest level those moves are legal at. A lower level only works with level-appropriate moves.";
                     pkm = nativeNL;
                     la = new LegalityAnalysis(pkm);
                     LogUtil.LogInfo($"[TradeModule] Z-A native {pkm.Species}: rebuilt non-shiny native (dropped too-low level), valid now={la.Valid}", "Helpers");
@@ -2028,7 +2037,8 @@ public static class Helpers<T> where T : PKM, new()
             Pokemon = pk,
             ShowdownSet = set,
             LgCode = lgcode,
-            IsNonNative = isNonNative
+            IsNonNative = isNonNative,
+            LevelAdjustedNote = levelAdjustNote
         });
     }
 

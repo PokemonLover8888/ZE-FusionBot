@@ -11,6 +11,12 @@ public class ProcessedPokemonResult<T> where T : PKM, new()
     public string? LegalizationHint { get; set; }
     public List<Pictocodes>? LgCode { get; set; }
     public bool IsNonNative { get; set; }
+    /// <summary>
+    /// Set when a requested level had to be raised because the requested moves can't legally
+    /// be known at that level (e.g. Level 19 with Bitter Blade). Surfaced to the member so they
+    /// know why their mon's level differs from what they typed. Null when nothing was adjusted.
+    /// </summary>
+    public string? LevelAdjustedNote { get; set; }
 }
 
 public class BatchTradeError
