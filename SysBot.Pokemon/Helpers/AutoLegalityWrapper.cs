@@ -265,6 +265,22 @@ public static class AutoLegalityWrapper
         {
             var previousType = APILegality.GameVersionPriority;
             var previousOrder = APILegality.PriorityOrder;
+            try
+            {
+            // Z-A FIRST PASS — NativeOnly. Any species catchable in Z-A (shiny OR non-shiny)
+            // generates from its real Z-A encounter, so it can NEVER ship "Non-Native / Cannot
+            // enter HOME" by leaking an SV/SwSh encounter. Only when Z-A genuinely can't make it
+            // (species not in Z-A at all — e.g. a cross-gen event mon) does generation fall
+            // through to the cross-game PriorityOrder below. Verified across Froakie/Riolu/
+            // Sceptile/Noivern (incl. shiny): NativeOnly yields a valid native Z-A mon.
+            if (isZA)
+            {
+                APILegality.GameVersionPriority = GameVersionPriorityType.NativeOnly;
+                var native = sav.GetLegal(template, out res);
+                if (native is PA9 np && np.Species == template.Species && new LegalityAnalysis(np).Valid)
+                    return native;
+            }
+
             APILegality.GameVersionPriority = GameVersionPriorityType.PriorityOrder;
 
             if (isZA)
@@ -310,9 +326,7 @@ public static class AutoLegalityWrapper
                 };
             }
 
-            try
-            {
-                return sav.GetLegal(template, out res);
+            return sav.GetLegal(template, out res);
             }
             finally
             {
