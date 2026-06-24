@@ -337,6 +337,38 @@ public static class AutoLegalityWrapper
     }
 
     /// <summary>
+    /// Direct, SYNCHRONOUS NativeOnly generation for Z-A (PA9). Mirrors the proven offline path
+    /// (sav.GetLegalFromSet under NativeOnly) instead of routing through <see cref="GetLegal"/>'s
+    /// Task.Run wrapper, which on the live bot can return a Non-Native SV encounter for a species
+    /// that DOES have a valid Z-A encounter (Scizor/Absol/etc.). Returns a valid NATIVE
+    /// (Gen9a-context) PA9, or null if a native one genuinely can't be built. Safety net for the
+    /// recurring "Z-A native shipped as Non-Native" bug.
+    /// </summary>
+    public static PKM? GetLegalNativeZA(this ITrainerInfo sav, IBattleTemplate template)
+    {
+        lock (_almPriorityLock)
+        {
+            var prevType = APILegality.GameVersionPriority;
+            try
+            {
+                APILegality.GameVersionPriority = GameVersionPriorityType.NativeOnly;
+                var created = sav.GetLegalFromSet(template).Created;
+                if (created is PA9 && created.Species == template.Species)
+                {
+                    var la = new LegalityAnalysis(created);
+                    if (la.Valid && la.EncounterOriginal.Context == created.Context)
+                        return created;
+                }
+                return null;
+            }
+            finally
+            {
+                APILegality.GameVersionPriority = prevType;
+            }
+        }
+    }
+
+    /// <summary>
     /// Generates with raid (Mystery/Static) encounters prioritized FIRST. Needed when a
     /// raid-exclusive mark like the Mightiest Mark ("The Unrivaled") is requested: the host
     /// disables HOME-tracker checks for trading convenience, which makes wild/egg cross-origin

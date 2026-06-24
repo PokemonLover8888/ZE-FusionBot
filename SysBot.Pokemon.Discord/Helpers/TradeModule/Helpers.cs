@@ -1786,6 +1786,38 @@ public static class Helpers<T> where T : PKM, new()
             catch (Exception ex) { LogUtil.LogError($"[TradeModule] Z-A non-shiny native rebuild failed: {ex.Message}", "Helpers"); }
         }
 
+        // FINAL Z-A native safety net. If the result is STILL a Non-Native PA9 for a species
+        // that genuinely has a Z-A encounter (Scizor, Absol, etc.), the threaded GetLegalForTrade
+        // path returned an SV encounter even though a native one exists. Regenerate via the DIRECT
+        // synchronous NativeOnly path (the proven-correct route), then re-apply shininess. Tries
+        // the original set first, then with Level stripped (a too-low level can block native).
+        // Only replaces the result when the rebuild is genuinely native (context match), so
+        // cross-gen-only species (no Z-A encounter) are left exactly as-is.
+        if (typeof(T) == typeof(PA9) && !isZAWildLegendary && pkm is PA9 stillNonNative
+            && new LegalityAnalysis(stillNonNative).EncounterOriginal.Context != stillNonNative.Context)
+        {
+            try
+            {
+                var direct = sav.GetLegalNativeZA(template);
+                if (direct is not PA9)
+                {
+                    var noLvl = set.GetSetLines().Where(l => !l.TrimStart().StartsWith("Level", StringComparison.OrdinalIgnoreCase));
+                    direct = sav.GetLegalNativeZA(AutoLegalityWrapper.GetTemplate(new ShowdownSet(string.Join("\n", noLvl))));
+                    if (direct is PA9 dLvl)
+                        ApplyLowestLegalLevel(dLvl, reqLevel);
+                }
+                if (direct is PA9 dPa9)
+                {
+                    if (template.Shiny && !dPa9.IsShiny) { dPa9.SetShiny(); }
+                    dPa9.RefreshChecksum();
+                    pkm = dPa9;
+                    la = new LegalityAnalysis(pkm);
+                    LogUtil.LogInfo($"[TradeModule] Z-A native safety net: rebuilt {pkm.Species} natively via direct path (was Non-Native), valid={la.Valid}", "Helpers");
+                }
+            }
+            catch (Exception ex) { LogUtil.LogError($"[TradeModule] Z-A native safety net failed: {ex.Message}", "Helpers"); }
+        }
+
         if (!la.Valid && pkm is PA9 && !isZAWildLegendary && !nativeZAShiny)
         {
             var fallback = TryGetAsHomePa9(template, spec);
