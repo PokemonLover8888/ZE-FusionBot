@@ -1663,14 +1663,21 @@ public static class Helpers<T> where T : PKM, new()
         // species. Non-regressing: if no valid native base is produced, nativeZAShiny stays
         // false and the SV fallback below runs exactly as before.
         bool nativeZAShiny = false;
-        bool currentGoodNativeShiny = la.Valid && pkm is PA9 cgs && cgs.IsShiny && cgs.MetLocation is > 0 and <= 350;
+        // "Already a good native shiny" must be judged by the ENCOUNTER CONTEXT (actually Z-A
+        // native), NOT the met-location number — SV locations (e.g. East Paldean Sea) are also
+        // low numbers, so the old "MetLocation <= 350" test let a Non-Native SV shiny pass and
+        // skipped the native rebuild (shiny Ceruledge/Froakie shipped as SV Non-Native).
+        bool currentGoodNativeShiny = la.Valid && pkm is PA9 cgs && cgs.IsShiny && la.EncounterOriginal.Context == cgs.Context;
         if (template.Shiny && typeof(T) == typeof(PA9) && !isZAWildLegendary && !currentGoodNativeShiny)
         {
             try
             {
                 var nsLines = set.GetSetLines().Where(l => !l.TrimStart().StartsWith("Shiny", StringComparison.OrdinalIgnoreCase));
                 var nsBase = sav.GetLegalForTrade(AutoLegalityWrapper.GetTemplate(new ShowdownSet(string.Join("\n", nsLines))), out _);
-                if (nsBase is PA9 nativePa9 && nativePa9.Species == template.Species && nativePa9.MetLocation is > 0 and <= 350)
+                // The rebuilt non-shiny base must itself be a NATIVE Z-A encounter (context match),
+                // otherwise SetShiny on a non-native base just re-ships Non-Native.
+                if (nsBase is PA9 nativePa9 && nativePa9.Species == template.Species
+                    && new LegalityAnalysis(nativePa9).EncounterOriginal.Context == nativePa9.Context)
                 {
                     // Fix the cosmetic Height/Weight flag on the base if present (same as Sceptile).
                     var nbReport = new LegalityAnalysis(nativePa9).Report();
