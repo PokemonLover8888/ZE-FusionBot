@@ -1668,6 +1668,44 @@ public static class Helpers<T> where T : PKM, new()
         // low numbers, so the old "MetLocation <= 350" test let a Non-Native SV shiny pass and
         // skipped the native rebuild (shiny Ceruledge/Froakie shipped as SV Non-Native).
         bool currentGoodNativeShiny = la.Valid && pkm is PA9 cgs && cgs.IsShiny && la.EncounterOriginal.Context == cgs.Context;
+
+        // Requested level (if the set had "Level: N"), so the native rebuilds below can honor it
+        // when it's legal, instead of leaving the Showdown default of 100.
+        int reqLevel = 0;
+        {
+            var lvlLine = set.GetSetLines().FirstOrDefault(l => l.TrimStart().StartsWith("Level", StringComparison.OrdinalIgnoreCase));
+            if (lvlLine != null)
+            {
+                var ci = lvlLine.IndexOf(':');
+                if (ci >= 0) int.TryParse(lvlLine[(ci + 1)..].Trim(), out reqLevel);
+            }
+        }
+        // Set a freshly-built native mon to the LOWEST current level that keeps it fully legal.
+        // Dropping "Level: N" leaves the Showdown default of 100, but the requested moves (e.g.
+        // Bitter Blade) require a minimum level — below it the mon is illegal, above it is fine.
+        // Validity is monotonic in level, so binary-search the lowest legal level in [met, current],
+        // then honor the requested level when it's >= that floor, else use the floor (the closest
+        // legal level to what was asked). Called on the NON-shiny base (where .Valid is reliable;
+        // PKHeX's incomplete Z-A shiny data would otherwise read invalid at every level).
+        static void ApplyLowestLegalLevel(PKM pk, int requestedLevel)
+        {
+            byte met = pk.MetLevel < 1 ? (byte)1 : pk.MetLevel;
+            int hi = pk.CurrentLevel;
+            if (hi <= met) return;
+            int lo = met, h = hi, lowestValid = hi;
+            while (lo <= h)
+            {
+                int mid = (lo + h) / 2;
+                pk.CurrentLevel = (byte)mid;
+                pk.RefreshChecksum();
+                if (new LegalityAnalysis(pk).Valid) { lowestValid = mid; h = mid - 1; }
+                else lo = mid + 1;
+            }
+            int target = (requestedLevel >= lowestValid && requestedLevel <= 100) ? requestedLevel : lowestValid;
+            pk.CurrentLevel = (byte)target;
+            pk.RefreshChecksum();
+        }
+
         if (template.Shiny && typeof(T) == typeof(PA9) && !isZAWildLegendary && !currentGoodNativeShiny)
         {
             try
@@ -1694,6 +1732,9 @@ public static class Helpers<T> where T : PKM, new()
                     {
                         nativePa9.HeightScalar = 128; nativePa9.WeightScalar = 128; nativePa9.Scale = 128;
                     }
+                    // Honor the requested level (clamped up to the lowest level the moves allow)
+                    // instead of the stripped-out default of 100. Done while still non-shiny.
+                    ApplyLowestLegalLevel(nativePa9, reqLevel);
                     nativePa9.SetShiny();
                     nativePa9.RefreshChecksum();
                     pkm = nativePa9;
@@ -1725,6 +1766,9 @@ public static class Helpers<T> where T : PKM, new()
                 if (nlBase is PA9 nativeNL && nativeNL.Species == template.Species
                     && new LegalityAnalysis(nativeNL).EncounterOriginal.Context == nativeNL.Context)
                 {
+                    // Honor the requested level (clamped up to the lowest level the moves allow)
+                    // instead of the stripped-out default of 100.
+                    ApplyLowestLegalLevel(nativeNL, reqLevel);
                     pkm = nativeNL;
                     la = new LegalityAnalysis(pkm);
                     LogUtil.LogInfo($"[TradeModule] Z-A native {pkm.Species}: rebuilt non-shiny native (dropped too-low level), valid now={la.Valid}", "Helpers");
