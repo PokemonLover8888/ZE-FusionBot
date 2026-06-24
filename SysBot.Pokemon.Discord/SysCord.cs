@@ -552,13 +552,25 @@ public sealed partial class SysCord<T> where T : PKM, new()
         {
             var customId = component.Data.CustomId;
 
+            // These buttons live in the bot's DMs (Link Code / Trade Canceled embeds). Discord
+            // does NOT allow ephemeral interaction responses in DMs — using ephemeral:true there
+            // throws and the button appears "broken" (interaction failed). So only use ephemeral
+            // in a guild; in DMs send a normal response (or just defer + edit the message).
+            bool isDm = component.GuildId is null;
+
             if (customId.StartsWith("trade_close:"))
             {
-                // Dismiss — delete the message
+                // Dismiss — acknowledge the interaction first (DeferAsync works in DMs), then
+                // delete the message. Without the ack Discord shows "This interaction failed".
                 if (component.Message != null)
+                {
+                    await component.DeferAsync().ConfigureAwait(false);
                     await component.Message.DeleteAsync().ConfigureAwait(false);
+                }
                 else
-                    await component.RespondAsync("Message dismissed!", ephemeral: true).ConfigureAwait(false);
+                {
+                    await component.RespondAsync("Message dismissed!", ephemeral: !isDm).ConfigureAwait(false);
+                }
             }
             else if (customId.StartsWith("trade_requeue:"))
             {
@@ -566,7 +578,7 @@ public sealed partial class SysCord<T> where T : PKM, new()
                 await component.RespondAsync(
                     $"To re-queue, use the `{commandPrefix}trade` command or the `/trade` slash command in the server channel.\n" +
                     $"Your previous trade details are not retained — please submit a new request!",
-                    ephemeral: true).ConfigureAwait(false);
+                    ephemeral: !isDm).ConfigureAwait(false);
 
                 // Remove buttons from the original message
                 if (component.Message != null)
@@ -577,14 +589,14 @@ public sealed partial class SysCord<T> where T : PKM, new()
                 var commandPrefix = Runner.Config.Discord.CommandPrefix;
                 await component.RespondAsync(
                     $"To trade again, use the `{commandPrefix}trade` command or the `/trade` slash command in the server channel!",
-                    ephemeral: true).ConfigureAwait(false);
+                    ephemeral: !isDm).ConfigureAwait(false);
 
                 if (component.Message != null)
                     await component.Message.ModifyAsync(m => m.Components = new ComponentBuilder().Build()).ConfigureAwait(false);
             }
             else if (customId.StartsWith("trade_cancel:"))
             {
-                await component.RespondAsync("Trade cancellation noted. The bot will cancel your trade if it hasn't started yet.", ephemeral: true).ConfigureAwait(false);
+                await component.RespondAsync("Trade cancellation noted. The bot will cancel your trade if it hasn't started yet.", ephemeral: !isDm).ConfigureAwait(false);
 
                 if (component.Message != null)
                     await component.Message.ModifyAsync(m => m.Components = new ComponentBuilder().Build()).ConfigureAwait(false);
