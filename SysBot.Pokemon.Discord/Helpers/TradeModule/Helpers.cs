@@ -1672,7 +1672,16 @@ public static class Helpers<T> where T : PKM, new()
         {
             try
             {
-                var nsLines = set.GetSetLines().Where(l => !l.TrimStart().StartsWith("Shiny", StringComparison.OrdinalIgnoreCase));
+                // Also drop "Level: N" when rebuilding the native base. A too-low requested level
+                // (e.g. shiny Ceruledge "Level: 19" with Bitter Blade/Phantom Force) is BELOW the
+                // Z-A encounter's met level / move-learn level, so NativeOnly can't satisfy it and
+                // the mon leaks to a Non-Native SV encounter. Each move and Shiny individually are
+                // native-legal; only the level constraint forces the fallback. Stripping it lets ALM
+                // use the encounter's natural level and keep the mon NATIVE (HOME-able). This only
+                // runs when the main gen already FAILED to produce a good native shiny, so a valid
+                // native level is preserved in the normal case.
+                var nsLines = set.GetSetLines().Where(l => !l.TrimStart().StartsWith("Shiny", StringComparison.OrdinalIgnoreCase)
+                    && !l.TrimStart().StartsWith("Level", StringComparison.OrdinalIgnoreCase));
                 var nsBase = sav.GetLegalForTrade(AutoLegalityWrapper.GetTemplate(new ShowdownSet(string.Join("\n", nsLines))), out _);
                 // The rebuilt non-shiny base must itself be a NATIVE Z-A encounter (context match),
                 // otherwise SetShiny on a non-native base just re-ships Non-Native.
@@ -1694,6 +1703,34 @@ public static class Helpers<T> where T : PKM, new()
                 }
             }
             catch (Exception ex) { LogUtil.LogError($"[TradeModule] Z-A native-shiny build failed: {ex.Message}", "Helpers"); }
+        }
+
+        // Non-shiny Z-A native rescue. The shiny case is handled above; this covers EVERY
+        // non-shiny Z-A-native species. The trap here is a *valid-but-Non-Native* PA9: when a
+        // requested Level (or move set) can't be satisfied by the native Z-A encounter, ALM
+        // falls back to the SV encounter, which IS legal — so every "!la.Valid" rescue below is
+        // skipped and the Non-Native SV mon ships ("Cannot enter HOME"). Detect a PA9 whose
+        // encounter CONTEXT isn't Gen9a (Non-Native) and rebuild from the request with the Level
+        // constraint dropped — a too-low level below the Z-A encounter's met/move-learn level is
+        // the usual culprit. Only replaces the result when the rebuild is genuinely NATIVE
+        // (context match), so cross-gen species with no Z-A encounter are untouched.
+        if (typeof(T) == typeof(PA9) && !template.Shiny && !isZAWildLegendary && !nativeZAShiny
+            && pkm is PA9 nonNativePa9 && nonNativePa9.Species == template.Species
+            && la.EncounterOriginal.Context != nonNativePa9.Context)
+        {
+            try
+            {
+                var nlLines = set.GetSetLines().Where(l => !l.TrimStart().StartsWith("Level", StringComparison.OrdinalIgnoreCase));
+                var nlBase = sav.GetLegalForTrade(AutoLegalityWrapper.GetTemplate(new ShowdownSet(string.Join("\n", nlLines))), out _);
+                if (nlBase is PA9 nativeNL && nativeNL.Species == template.Species
+                    && new LegalityAnalysis(nativeNL).EncounterOriginal.Context == nativeNL.Context)
+                {
+                    pkm = nativeNL;
+                    la = new LegalityAnalysis(pkm);
+                    LogUtil.LogInfo($"[TradeModule] Z-A native {pkm.Species}: rebuilt non-shiny native (dropped too-low level), valid now={la.Valid}", "Helpers");
+                }
+            }
+            catch (Exception ex) { LogUtil.LogError($"[TradeModule] Z-A non-shiny native rebuild failed: {ex.Message}", "Helpers"); }
         }
 
         if (!la.Valid && pkm is PA9 && !isZAWildLegendary && !nativeZAShiny)
