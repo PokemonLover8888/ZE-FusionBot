@@ -363,7 +363,15 @@ public class DiscordTradeNotifier<T> : IPokeTradeNotifier<T>, IDisposable
             message = tradedToUser != 0 ? $"Trade finished. Enjoy!" : "Trade finished!";
         }
 
-        Trader.SendMessageAsync(message).ConfigureAwait(false);
+        // Single trades: send the finished EMBED (carries the "Trade Again" / "Dismiss" buttons)
+        // instead of a plain text message, so a COMPLETED trade shows action buttons like the
+        // code/searching phases do. Batch progress messages stay as plain text. The buttons only
+        // need the user ID (trade_again:{userId} / trade_close:{userId}), so the unique trade ID
+        // isn't required here.
+        if (TotalBatchTrades <= 1)
+            EmbedHelper.SendTradeFinishedEmbedAsync(Trader, message, Data, IsMysteryEgg).ConfigureAwait(false);
+        else
+            Trader.SendMessageAsync(message).ConfigureAwait(false);
 
         // For single trades only, return the Pokemon immediately
         // Batch trades will have their Pokemon returned separately via SendNotification
