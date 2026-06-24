@@ -319,7 +319,13 @@ public class DiscordTradeNotifier<T> : IPokeTradeNotifier<T>, IDisposable
             ? $"Batch trade canceled: {msg}. All remaining trades have been canceled."
             : msg.ToString();
 
-        EmbedHelper.SendTradeCanceledEmbedAsync(Trader, cancelMessage).ConfigureAwait(false);
+        // Build full embed data carrying the REAL unique trade ID so the "Re-queue" button's
+        // customId (trade_requeue:{userId}:{uniqueTradeId}) matches the stored re-queue entry.
+        // The old 2-arg overload defaulted UniqueTradeId to 0, so RequeueByIdAsync always missed
+        // and the button reported "Couldn't re-queue". info.UniqueTradeID is the same key the
+        // trade was stored under in AddToTradeQueue.
+        var canceledData = TradeEmbedDataBuilder.Build(Data, Code, Trader.Id, info.UniqueTradeID, BatchTradeNumber, TotalBatchTrades, IsMysteryEgg);
+        EmbedHelper.SendTradeCanceledEmbedAsync(Trader, cancelMessage, canceledData).ConfigureAwait(false);
     }
 
     public void TradeFinished(PokeRoutineExecutor<T> routine, PokeTradeDetail<T> info, T result)
