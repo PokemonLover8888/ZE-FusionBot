@@ -141,47 +141,63 @@ public static class WebTradeHandler
         LogUtil.LogInfo($"[WebTrade] Could not find item for species {species} form {form} in {targetType.Name}", "WebTrade");
     }
 
+    // Returns a "rate limited" error object if the user is already over the per-minute limit,
+    // else null. Does NOT consume a slot — only a SUCCESSFUL trade does (see CountRateLimitHit).
+    // This is why typos / wrong Pokémon names / illegal sets never cause a cooldown: the bot
+    // rejects them before they ever enter the queue, so they shouldn't burn a rate-limit slot.
+    private static object? CheckRateLimited(string username)
+    {
+        var rateKey = username.ToLowerInvariant();
+        if (RateLimits.TryGetValue(rateKey, out var limit)
+            && (DateTime.Now - limit.Window).TotalMinutes < 1
+            && limit.Count >= MaxRequestsPerMinute)
+        {
+            LogUtil.LogInfo($"[WebTrade] Rate limited user: {username} ({limit.Count} requests)", "WebTrade");
+            return new { success = false, error = "You are sending requests too fast. You have been temporarily rate limited. If you believe this is an error, please contact the owner @Quilava156 on Discord." };
+        }
+        return null;
+    }
+
+    // Consume one rate-limit slot — call ONLY after a trade was actually accepted/queued.
+    private static void CountRateLimitHit(string username)
+    {
+        var now = DateTime.Now;
+        var rateKey = username.ToLowerInvariant();
+        if (RateLimits.TryGetValue(rateKey, out var limit) && (now - limit.Window).TotalMinutes < 1)
+            RateLimits[rateKey] = (limit.Count + 1, limit.Window);
+        else
+            RateLimits[rateKey] = (1, now);
+    }
+
+    // The submit methods return anonymous objects with a bool "success" field.
+    private static bool WasSuccessful(object? result)
+        => result?.GetType().GetProperty("success")?.GetValue(result) is bool b && b;
+
     public static object SubmitTrade(string showdownSet, string username, int tradeCode, bool forceShiny = false)
     {
         // Set default username if empty
         if (string.IsNullOrWhiteSpace(username))
             username = "WebTrader";
 
-        // Rate limiting — max 3 requests per minute per user
-        var now = DateTime.Now;
-        var rateKey = username.ToLowerInvariant();
-        if (RateLimits.TryGetValue(rateKey, out var limit))
-        {
-            if ((now - limit.Window).TotalMinutes < 1)
-            {
-                if (limit.Count >= MaxRequestsPerMinute)
-                {
-                    LogUtil.LogInfo($"[WebTrade] Rate limited user: {username} ({limit.Count} requests)", "WebTrade");
-                    return new { success = false, error = "You are sending requests too fast. You have been temporarily rate limited. If you believe this is an error, please contact the owner @Quilava156 on Discord." };
-                }
-                RateLimits[rateKey] = (limit.Count + 1, limit.Window);
-            }
-            else
-            {
-                RateLimits[rateKey] = (1, now);
-            }
-        }
-        else
-        {
-            RateLimits[rateKey] = (1, now);
-        }
+        // Block only if already over the limit; the slot is consumed AFTER a successful submit
+        // so a wrong name / illegal set never counts toward the cooldown.
+        var limited = CheckRateLimited(username);
+        if (limited != null) return limited;
 
         try
         {
             // Try each hub type in order
-            if (_hubPA9 != null) return SubmitTradeInternal(_hubPA9, showdownSet, username, tradeCode, forceShiny);
-            if (_hubPK9 != null) return SubmitTradeInternal(_hubPK9, showdownSet, username, tradeCode, forceShiny);
-            if (_hubPK8 != null) return SubmitTradeInternal(_hubPK8, showdownSet, username, tradeCode, forceShiny);
-            if (_hubPB8 != null) return SubmitTradeInternal(_hubPB8, showdownSet, username, tradeCode, forceShiny);
-            if (_hubPA8 != null) return SubmitTradeInternal(_hubPA8, showdownSet, username, tradeCode, forceShiny);
-            if (_hubPB7 != null) return SubmitTradeInternal(_hubPB7, showdownSet, username, tradeCode, forceShiny);
+            object result;
+            if (_hubPA9 != null) result = SubmitTradeInternal(_hubPA9, showdownSet, username, tradeCode, forceShiny);
+            else if (_hubPK9 != null) result = SubmitTradeInternal(_hubPK9, showdownSet, username, tradeCode, forceShiny);
+            else if (_hubPK8 != null) result = SubmitTradeInternal(_hubPK8, showdownSet, username, tradeCode, forceShiny);
+            else if (_hubPB8 != null) result = SubmitTradeInternal(_hubPB8, showdownSet, username, tradeCode, forceShiny);
+            else if (_hubPA8 != null) result = SubmitTradeInternal(_hubPA8, showdownSet, username, tradeCode, forceShiny);
+            else if (_hubPB7 != null) result = SubmitTradeInternal(_hubPB7, showdownSet, username, tradeCode, forceShiny);
+            else return new { success = false, error = "No trade hub available" };
 
-            return new { success = false, error = "No trade hub available" };
+            if (WasSuccessful(result)) CountRateLimitHit(username);
+            return result;
         }
         catch (Exception ex)
         {
@@ -200,29 +216,11 @@ public static class WebTradeHandler
         if (string.IsNullOrWhiteSpace(username))
             username = "WebTrader";
 
-        // Rate limit (shared with the showdown-set path)
-        var now = DateTime.Now;
-        var rateKey = username.ToLowerInvariant();
-        if (RateLimits.TryGetValue(rateKey, out var limit))
-        {
-            if ((now - limit.Window).TotalMinutes < 1)
-            {
-                if (limit.Count >= MaxRequestsPerMinute)
-                {
-                    LogUtil.LogInfo($"[WebTrade] Rate limited user: {username} ({limit.Count} requests)", "WebTrade");
-                    return new { success = false, error = "You are sending requests too fast. You have been temporarily rate limited. If you believe this is an error, please contact the owner @Quilava156 on Discord." };
-                }
-                RateLimits[rateKey] = (limit.Count + 1, limit.Window);
-            }
-            else
-            {
-                RateLimits[rateKey] = (1, now);
-            }
-        }
-        else
-        {
-            RateLimits[rateKey] = (1, now);
-        }
+        // Block only if already over the limit. Event files are picked from a list (no typed
+        // names to get wrong), so count this attempt up front — shared with the showdown path.
+        var limited = CheckRateLimited(username);
+        if (limited != null) return limited;
+        CountRateLimitHit(username);
 
         try
         {
