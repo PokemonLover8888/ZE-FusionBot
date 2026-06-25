@@ -646,7 +646,8 @@ public static class Helpers<T> where T : PKM, new()
                 // etc.). For shiny requests on species WITHOUT a dedicated shiny pre-made,
                 // fall through to ALM so it routes through SwSh→HOME→PA9 (Max Lair shiny
                 // is encounter-eligible) instead of force-flipping a non-shiny file's PID.
-                bool hasShinyPreMade = template.Species == 718; // Zygarde — 2018 Legends event
+                bool hasShinyPreMade = template.Species is 718  // Zygarde — 2018 Legends event
+                    or 807; // Zeraora — SWSH WC8 HOME Distribution shiny (0807 ★ ...pa9, "a lovely place"); native Z-A Hyperspace Lumiose is shiny-LOCKED so ALM would ship an illegal shiny
                 bool isZALegPre = typeof(T) == typeof(PA9)
                     && IsZALegendaryWithPreMade(template.Species)
                     && (!template.Shiny || hasShinyPreMade);
