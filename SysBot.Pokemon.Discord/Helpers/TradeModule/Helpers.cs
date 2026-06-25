@@ -784,9 +784,20 @@ public static class Helpers<T> where T : PKM, new()
                                 // BEFORE falling back to PID-flipping a non-shiny pre-made — the flip
                                 // produces an illegal shiny when the file's encounter is shiny-locked
                                 // (Zygarde-Complete from Wild Zone 20, Hoopa from Hyperspace Lumiose, etc.).
-                                var patterns = template.Shiny
-                                    ? new[] { $"{prefix}{formSuffix} ★ -*{ext}", $"{prefix} ★ -*{ext}", $"{prefix}{formSuffix} -*{ext}", $"{prefix} -*{ext}" }
-                                    : new[] { $"{prefix}{formSuffix} -*{ext}", $"{prefix} -*{ext}", $"{prefix}{formSuffix} ★ -*{ext}", $"{prefix} ★ -*{ext}" };
+                                // Patterns for the REQUESTED shininess vs. the opposite (flip).
+                                var matchPatterns = template.Shiny
+                                    ? new[] { $"{prefix}{formSuffix} ★ -*{ext}", $"{prefix} ★ -*{ext}" }
+                                    : new[] { $"{prefix}{formSuffix} -*{ext}", $"{prefix} -*{ext}" };
+                                var flipPatterns = template.Shiny
+                                    ? new[] { $"{prefix}{formSuffix} -*{ext}", $"{prefix} -*{ext}" }
+                                    : new[] { $"{prefix}{formSuffix} ★ -*{ext}", $"{prefix} ★ -*{ext}" };
+                                // Only flip an opposite-shininess file when NO file of the requested
+                                // shininess exists. When BOTH exist (e.g. Zeraora: non-shiny native
+                                // "0807 -" = Hyperspace Lumiose, shiny event "0807 ★" = "a lovely
+                                // place") they must NOT cross — otherwise a non-shiny request grabs the
+                                // shiny file and flips it (wrong met location), and vice versa.
+                                bool hasMatchingShinyFile = matchPatterns.Any(p => Directory.GetFiles(preMadeFolder, p).Length > 0);
+                                var patterns = hasMatchingShinyFile ? matchPatterns : matchPatterns.Concat(flipPatterns).ToArray();
                                 LogUtil.LogInfo($"[TradeModule] Mythical fallback START: species={template.Species}, ext={ext}, shiny={template.Shiny}, formSuffix={formSuffix}", "Helpers");
                                 bool foundAny = false;
                                 foreach (var pat in patterns)
@@ -863,8 +874,25 @@ public static class Helpers<T> where T : PKM, new()
                                                 var reqMoves = Array.FindAll(set.Moves ?? Array.Empty<ushort>(), m => m != 0);
                                                 if (reqMoves.Length > 0)
                                                 {
+                                                    // Some pre-made encounters can't legally learn every requested
+                                                    // move (e.g. Iron Head isn't in the native Z-A Zeraora's pool,
+                                                    // though it IS on the SwSh event Zeraora). If the requested set
+                                                    // makes THIS file's moves illegal, keep the file's original legal
+                                                    // moveset — far better than failing legality and falling through
+                                                    // to a different file (wrong met location / shininess).
+                                                    var origMoves = new ushort[4];
+                                                    preMade.GetMoves(origMoves.AsSpan());
                                                     preMade.SetMoves(reqMoves);
                                                     preMade.HealPP();
+                                                    preMade.RefreshChecksum();
+                                                    var mvReport = new LegalityAnalysis(preMade).Report();
+                                                    if (mvReport.Contains("Invalid Move", StringComparison.OrdinalIgnoreCase)
+                                                        || mvReport.Contains("can't be learned", StringComparison.OrdinalIgnoreCase))
+                                                    {
+                                                        preMade.SetMoves(origMoves);
+                                                        preMade.HealPP();
+                                                        LogUtil.LogInfo($"[TradeModule] Pre-made {preMade.Species}: a requested move is illegal for this encounter — kept the file's original legal moveset", "Helpers");
+                                                    }
                                                 }
 
                                                 // Held item — the ONE field that still trips PKHeX on a Z-A
