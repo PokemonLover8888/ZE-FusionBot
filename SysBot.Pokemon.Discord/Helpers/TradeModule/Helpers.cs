@@ -2521,15 +2521,15 @@ public static class Helpers<T> where T : PKM, new()
             _ = embedBuilder.AddField("💡 Hint", result.LegalizationHint);
         }
 
-        // Fair-cooldown reassurance: the bot only counts trades that actually complete,
-        // so a format mistake / illegal mon / blocked request never burns a daily slot.
-        // Surface that explicitly so members feel safe iterating.
+        // Reassurance, worded so it can't be misread as "you got a cooldown": a failed/mistake
+        // request never costs the member a trade or applies any cooldown. The bot only counts
+        // trades that actually complete.
         embedBuilder.AddField(
-            "🛡️ No Cooldown Applied",
-            "This **does not** count toward your daily trade limit. Mistakes are free — fix it and try again!",
+            "✅ This Was Free — No Cooldown, No Trade Used",
+            "Your mistake did **NOT** put you on cooldown and did **NOT** use a trade. Just fix it and send it again — retry as many times as you need!",
             inline: false);
 
-        embedBuilder.WithFooter("Free retries on format errors • Cooldowns only apply to completed trades");
+        embedBuilder.WithFooter("Mistakes never cost you anything • Only completed trades count");
 
         string userMention = context.User.Mention;
         string messageContent = $"{userMention}, here's the report for your request:";
