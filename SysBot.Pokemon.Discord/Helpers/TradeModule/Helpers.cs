@@ -2131,6 +2131,27 @@ public static class Helpers<T> where T : PKM, new()
         // SwSh via HOME-transfer, LGPE via the original GO Park / Mystery Box mechanic.
         // Meltan/Melmetal in PB7 are *only* obtainable via GO transfer, so GO-origin PB7
         // must not be flagged Non-Native or AutoOT/HOME-eligibility gets disabled.
+        // Restore user-specified IVs if a batch command re-rolled them. A Mark (notably
+        // RibbonMarkThorny) makes ALM regenerate the encounter and re-roll IVs to flawless, so a
+        // request like "IVs: 26/27/22/14/18/0 + .RibbonMarkThorny=true" shipped 31/31/31/31/31/0
+        // instead of the requested spread. Marks/ribbons don't constrain IVs, so re-applying the
+        // requested values stays legal; revert only if the encounter genuinely fixes IVs.
+        if (userSpecifiedIVs && result != "PreMadeFile" && set?.IVs is { Length: 6 } wantIVs)
+        {
+            var curIVs = new int[6];
+            pk.GetIVs(curIVs);
+            if (!curIVs.SequenceEqual(wantIVs))
+            {
+                var ivBackup = pk.Clone();
+                pk.SetIVs(wantIVs);
+                pk.RefreshChecksum();
+                if (!new LegalityAnalysis(pk).Valid)
+                    pk = (T)ivBackup; // requested IVs illegal for this encounter — keep ALM's
+                else
+                    LogUtil.LogInfo($"[TradeModule] Restored user-specified IVs {string.Join("/", wantIVs)} for {pk.Species} (a batch command had re-rolled them)", "Helpers");
+            }
+        }
+
         la = new LegalityAnalysis(pk);
         var isNonNative = la.EncounterOriginal.Context != pk.Context || (pk.GO && pk is not PK8 && pk is not PB7);
 
