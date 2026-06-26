@@ -1872,6 +1872,29 @@ public static class Helpers<T> where T : PKM, new()
             catch (Exception ex) { LogUtil.LogError($"[TradeModule] SV native safety net failed: {ex.Message}", "Helpers"); }
         }
 
+        // BDSP native safety net (same mechanism as Z-A/SV). Ramanas Park legendaries (Rayquaza,
+        // the box trio, etc.) ARE catchable natively in BDSP, but the threaded native-first path
+        // can still leak a transfer encounter → Non-Native. Rebuild via the direct NativeOnly
+        // path. Unlike SV, BDSP bots run PKHeX v26.5.6.0 which DOES enforce shiny-locks, so the
+        // la.Valid check inside GetLegalNativeDirect rejects an illegal native shiny (shiny-locked
+        // mythical) and the transfer is kept — so this is safe for BOTH shiny and non-shiny.
+        if (typeof(T) == typeof(PB8)
+            && pkm is PB8 bdspNonNative && bdspNonNative.Species == template.Species
+            && new LegalityAnalysis(bdspNonNative).EncounterOriginal.Context != bdspNonNative.Context)
+        {
+            try
+            {
+                var directBd = sav.GetLegalNativeDirect(template);
+                if (directBd is PB8 bdNative)
+                {
+                    pkm = bdNative;
+                    la = new LegalityAnalysis(pkm);
+                    LogUtil.LogInfo($"[TradeModule] BDSP native safety net: rebuilt {pkm.Species} natively via direct path (was Non-Native), valid={la.Valid}", "Helpers");
+                }
+            }
+            catch (Exception ex) { LogUtil.LogError($"[TradeModule] BDSP native safety net failed: {ex.Message}", "Helpers"); }
+        }
+
         if (!la.Valid && pkm is PA9 && !isZAWildLegendary && !nativeZAShiny)
         {
             var fallback = TryGetAsHomePa9(template, spec);
