@@ -1827,11 +1827,11 @@ public static class Helpers<T> where T : PKM, new()
         {
             try
             {
-                var direct = sav.GetLegalNativeZA(template);
+                var direct = sav.GetLegalNativeDirect(template);
                 if (direct is not PA9)
                 {
                     var noLvl = set.GetSetLines().Where(l => !l.TrimStart().StartsWith("Level", StringComparison.OrdinalIgnoreCase));
-                    direct = sav.GetLegalNativeZA(AutoLegalityWrapper.GetTemplate(new ShowdownSet(string.Join("\n", noLvl))));
+                    direct = sav.GetLegalNativeDirect(AutoLegalityWrapper.GetTemplate(new ShowdownSet(string.Join("\n", noLvl))));
                     if (direct is PA9 dLvl)
                         ApplyLowestLegalLevel(dLvl, reqLevel);
                 }
@@ -1845,6 +1845,31 @@ public static class Helpers<T> where T : PKM, new()
                 }
             }
             catch (Exception ex) { LogUtil.LogError($"[TradeModule] Z-A native safety net failed: {ex.Message}", "Helpers"); }
+        }
+
+        // SV native safety net (same mechanism as Z-A). Rowlet/Dartrix/Kyurem etc. ARE catchable
+        // natively in SV (Indigo Disk Terarium / Paldea), but the SV bots don't force native
+        // priority, so ALM picks a Pokémon GO / Max Lair transfer and ships Non-Native. For a
+        // NON-shiny PK9 that's Non-Native yet has a valid native SV encounter, rebuild via the
+        // direct synchronous NativeOnly path. SHINY is intentionally left alone: some SV
+        // legendaries (e.g. Kyurem) are shiny-LOCKED, so their only legitimate shiny is a transfer
+        // (Max Lair) — and the older PKHeX on the SV bots doesn't enforce that lock, so forcing a
+        // native shiny could ship an illegal one. Non-shiny is always safe.
+        if (typeof(T) == typeof(PK9) && !template.Shiny
+            && pkm is PK9 svNonNative && svNonNative.Species == template.Species
+            && new LegalityAnalysis(svNonNative).EncounterOriginal.Context != svNonNative.Context)
+        {
+            try
+            {
+                var directSv = sav.GetLegalNativeDirect(template);
+                if (directSv is PK9 svNative)
+                {
+                    pkm = svNative;
+                    la = new LegalityAnalysis(pkm);
+                    LogUtil.LogInfo($"[TradeModule] SV native safety net: rebuilt {pkm.Species} natively via direct path (was Non-Native), valid={la.Valid}", "Helpers");
+                }
+            }
+            catch (Exception ex) { LogUtil.LogError($"[TradeModule] SV native safety net failed: {ex.Message}", "Helpers"); }
         }
 
         if (!la.Valid && pkm is PA9 && !isZAWildLegendary && !nativeZAShiny)

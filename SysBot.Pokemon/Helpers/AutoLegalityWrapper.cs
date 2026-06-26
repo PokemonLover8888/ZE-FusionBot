@@ -337,14 +337,15 @@ public static class AutoLegalityWrapper
     }
 
     /// <summary>
-    /// Direct, SYNCHRONOUS NativeOnly generation for Z-A (PA9). Mirrors the proven offline path
-    /// (sav.GetLegalFromSet under NativeOnly) instead of routing through <see cref="GetLegal"/>'s
-    /// Task.Run wrapper, which on the live bot can return a Non-Native SV encounter for a species
-    /// that DOES have a valid Z-A encounter (Scizor/Absol/etc.). Returns a valid NATIVE
-    /// (Gen9a-context) PA9, or null if a native one genuinely can't be built. Safety net for the
-    /// recurring "Z-A native shipped as Non-Native" bug.
+    /// Direct, SYNCHRONOUS NativeOnly generation for the host game. Mirrors the proven offline
+    /// path (sav.GetLegalFromSet under NativeOnly) instead of routing through <see cref="GetLegal"/>'s
+    /// Task.Run wrapper, which on the live bot can return a Non-Native (foreign-game / transfer)
+    /// encounter for a species that DOES have a valid native encounter — e.g. Z-A Scizor/Absol, or
+    /// SV Rowlet/Kyurem leaking to a Pokémon GO / Max Lair transfer. Returns a valid NATIVE result
+    /// (encounter context == the produced mon's context), or null if a native one genuinely can't
+    /// be built. Game-agnostic: the context-match check guarantees nativeness for any format.
     /// </summary>
-    public static PKM? GetLegalNativeZA(this ITrainerInfo sav, IBattleTemplate template)
+    public static PKM? GetLegalNativeDirect(this ITrainerInfo sav, IBattleTemplate template)
     {
         lock (_almPriorityLock)
         {
@@ -353,7 +354,7 @@ public static class AutoLegalityWrapper
             {
                 APILegality.GameVersionPriority = GameVersionPriorityType.NativeOnly;
                 var created = sav.GetLegalFromSet(template).Created;
-                if (created is PA9 && created.Species == template.Species)
+                if (created != null && created.Species == template.Species)
                 {
                     var la = new LegalityAnalysis(created);
                     if (la.Valid && la.EncounterOriginal.Context == created.Context)
