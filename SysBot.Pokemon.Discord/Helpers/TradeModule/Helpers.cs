@@ -2162,6 +2162,51 @@ public static class Helpers<T> where T : PKM, new()
         if (isNonNative && pk is PA9 && IsZANativeSpecies(pk.Species))
             isNonNative = false;
 
+        // ── Z-A: DECLINE instead of shipping a glitchy Non-Native SV fallback ──
+        // If the request isn't Z-A-legal (a move/ability/ribbon not available in Z-A), native
+        // generation fails and ALM falls back to an SV encounter with NO HOME tracker — wrong
+        // moves, can't enter HOME. We decline rather than ship that. Legit pre-mades
+        // (result == "PreMadeFile") and HOME-transferred Z-A legendaries (real tracker, or
+        // IsZANativeSpecies already cleared isNonNative above) still ship normally.
+        if (typeof(T) == typeof(PA9) && isNonNative && result != "PreMadeFile"
+            && !(pk is IHomeTrack zaTrk && zaTrk.HasTracker))
+        {
+            var spcName = GameInfo.Strings.Species[template.Species];
+            var strings = GameInfo.GetStrings("en");
+            var badMoves = new List<string>();
+            try
+            {
+                var reqMoves = (set?.Moves ?? Array.Empty<ushort>()).Where(m => m != 0).ToArray();
+                if (reqMoves.Length > 0)
+                {
+                    // Build a bare native Z-A version of the species and test each requested move
+                    // against it — the ones that flag "Invalid Move" are the ones Z-A can't learn.
+                    var zaBase = sav.GetLegalNativeDirect(AutoLegalityWrapper.GetTemplate(
+                        new ShowdownSet(spcName + (template.Shiny ? "\nShiny: Yes" : ""))));
+                    if (zaBase is PA9 zb)
+                    {
+                        foreach (var m in reqMoves)
+                        {
+                            zb.SetMoves(new[] { m }); zb.HealPP(); zb.RefreshChecksum();
+                            if (new LegalityAnalysis(zb).Report().Contains("Invalid Move", StringComparison.OrdinalIgnoreCase))
+                                badMoves.Add(strings.movelist[m]);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex) { LogUtil.LogError($"[TradeModule] Z-A decline move-check failed: {ex.Message}", "Helpers"); }
+
+            string detail = badMoves.Count > 0
+                ? $"These move(s) aren't available on **{spcName}** in Legends: Z-A: **{string.Join(", ", badMoves)}**."
+                : $"This Pokémon — or one of its requested moves, abilities, or ribbons — isn't available in Legends: Z-A.";
+            LogUtil.LogInfo($"[TradeModule] Z-A declined {spcName}: not Z-A-legal (bad moves: {(badMoves.Count > 0 ? string.Join(",", badMoves) : "n/a")})", "Helpers");
+            return Task.FromResult(new ProcessedPokemonResult<T>
+            {
+                Error = $"**{spcName} can't be made as a native Legends: Z-A Pokémon.**\n{detail}\n\nZ-A bots only deliver native, HOME-legal Pokémon — so this request was declined instead of shipping a glitchy non-native copy. Please use a Z-A-legal set, or request this exact Pokémon from a **Scarlet/Violet** or **SwSh** bot instead.",
+                ShowdownSet = set
+            });
+        }
+
         return Task.FromResult(new ProcessedPokemonResult<T>
         {
             Pokemon = pk,
