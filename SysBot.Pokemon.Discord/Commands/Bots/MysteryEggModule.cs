@@ -19,6 +19,7 @@ namespace SysBot.Pokemon.Discord
         [Command("mysteryegg")]
         [Alias("me")]
         [Summary("Trades an egg generated from a random Pokémon.")]
+        [RequireQueueRole(nameof(DiscordManager.RolesBatch))]
         public async Task TradeMysteryEggAsync()
         {
             // LGPE does not support eggs/breeding
@@ -53,6 +54,7 @@ namespace SysBot.Pokemon.Discord
         [Command("batchMysteryEgg")]
         [Alias("bme")]
         [Summary("Trades multiple Mystery Eggs at once (up to 4).")]
+        [RequireQueueRole(nameof(DiscordManager.RolesBatch))]
         public async Task BatchMysteryEggAsync([Summary("Number of eggs (1-4)")] int count = 2)
         {
             // LGPE does not support eggs/breeding
