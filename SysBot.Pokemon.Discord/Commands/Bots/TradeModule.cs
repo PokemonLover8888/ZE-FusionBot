@@ -676,6 +676,27 @@ public partial class TradeModule<T> : ModuleBase<SocketCommandContext> where T :
             return;
         }
 
+        // Batch text trades (more than one Pokémon at once) are Elite-only, same as $bt / Mystery Egg.
+        // Single text trades ($tt 1) stay open to everyone.
+        if (selections.Count > 1)
+        {
+            var mgr = SysCordSettings.Manager;
+            bool hasBatchAccess = false;
+            if (Context.User is SocketGuildUser gUser)
+            {
+                var roleNames = gUser.Roles.Select(z => z.Name).ToList();
+                hasBatchAccess = mgr.CanUseSudo(roleNames)
+                                 || (mgr.Config.AllowGlobalSudo && mgr.CanUseSudo(Context.User.Id))
+                                 || mgr.GetHasRoleAccess(nameof(DiscordManager.RolesBatch), roleNames);
+            }
+
+            if (!hasBatchAccess)
+            {
+                await ReplyAsync($"{user.Mention} Batch trading (more than one Pokémon at once) is for **Elite Sysbot Access** members only. You can still trade a single Pokémon with `{Prefix}tt 1`.");
+                return;
+            }
+        }
+
         // Mark the user as in queue
         _usersInQueue[userId] = true;
 
@@ -889,7 +910,7 @@ public partial class TradeModule<T> : ModuleBase<SocketCommandContext> where T :
     [Command("batchTrade")]
     [Alias("bt")]
     [Summary("Makes the bot trade multiple Pokémon from the provided list, up to a maximum of 4 trades.")]
-    [RequireQueueRole(nameof(DiscordManager.RolesTrade))]
+    [RequireQueueRole(nameof(DiscordManager.RolesBatch))]
     public async Task BatchTradeAsync([Summary("List of Showdown Sets separated by '---'")][Remainder] string content)
     {
         var tradeConfig = SysCord<T>.Runner.Config.Trade.TradeConfiguration;
@@ -994,7 +1015,7 @@ public partial class TradeModule<T> : ModuleBase<SocketCommandContext> where T :
     [Command("batchtradezip")]
     [Alias("btz", "batchzip", "ziptrade", "7z", "rar", "zip", "bt7", "btr", "batch7z", "batchrar")]
     [Summary("Upload a .zip/.rar/.7z containing PKM files to trade multiple Pokémon at once.")]
-    [RequireQueueRole(nameof(DiscordManager.RolesTrade))]
+    [RequireQueueRole(nameof(DiscordManager.RolesBatch))]
     public async Task BatchTradeZipAsync()
     {
         var tradeConfig = SysCord<T>.Runner.Config.Trade.TradeConfiguration;
