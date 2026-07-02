@@ -85,6 +85,12 @@ public class TradeStartModule<T> : ModuleBase<SocketCommandContext> where T : PK
             if (detail.Type == PokeTradeType.Random)
                 return;
 
+            // Batch trades: announce only the FIRST item. Mid-batch items each firing their own
+            // "Up Next / Starting trade" embed spams the channel (e.g. 6 identical embeds for a
+            // 6-mon batch). The completion already fires once per batch, so keep start symmetric.
+            if (detail.TotalBatchTrades > 1 && detail.BatchTradeNumber > 1)
+                return;
+
             // prevent duplicate embeds per trade
             lock (_startedTrades)
             {
