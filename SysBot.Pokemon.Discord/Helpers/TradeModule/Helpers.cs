@@ -2152,6 +2152,21 @@ public static class Helpers<T> where T : PKM, new()
             }
         }
 
+        // Restore the user-requested HELD ITEM if any path dropped it. BDSP legendary birds
+        // (and other native/pre-made paths) can ship without the requested item even though ALM
+        // generates it fine — a pre-made file has no item, or a rebuild re-rolls the base mon.
+        // set.HeldItem is 0 when the member didn't ask for one, so only act when they did.
+        if (set?.HeldItem is > 0 && pk.HeldItem != set.HeldItem)
+        {
+            var itemBackup = pk.Clone();
+            pk.HeldItem = set.HeldItem;
+            pk.RefreshChecksum();
+            if (!new LegalityAnalysis(pk).Valid)
+                pk = (T)itemBackup; // requested item illegal for this encounter — keep what we had
+            else
+                LogUtil.LogInfo($"[TradeModule] Restored user-requested held item {set.HeldItem} ({GameInfo.Strings.itemlist[set.HeldItem]}) for {pk.Species}", "Helpers");
+        }
+
         la = new LegalityAnalysis(pk);
         var isNonNative = la.EncounterOriginal.Context != pk.Context || (pk.GO && pk is not PK8 && pk is not PB7);
 
