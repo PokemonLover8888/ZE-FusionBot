@@ -1385,23 +1385,13 @@ public class PokeTradeBotLA(PokeTradeHub<PA8> Hub, PokeBotState Config) : PokeRo
 
         if (toSend is IHomeTrack pk && pk.HasTracker)
         {
-            // PLA native catches (met loc < 30000) shouldn't have a HOME tracker — they're
-            // wild static encounters (Coronet Highlands Darkrai, Shaymin, etc.), not HOME
-            // imports. Some upstream layers may auto-add a tracker anyway. Strip it here so
-            // AutoOT can proceed instead of refusing the swap and shipping the bot's default
-            // OT ("Dude") to the recipient.
-            bool isPLANativeForAutoOT = toSend.MetLocation is > 0 and < 30000;
-            if (isPLANativeForAutoOT)
-            {
-                pk.Tracker = 0;
-                toSend.RefreshChecksum();
-                Log("Stripped HOME tracker from PLA native catch to allow AutoOT.");
-            }
-            else
-            {
-                Log("Home tracker detected. Can't apply AutoOT.");
-                return toSend;
-            }
+            // A HOME tracker is only ever created by a real HOME transfer; deleting it makes the
+            // Pokemon illegal (HOME rejects it as hacked). A genuine in-game native catch has NO
+            // tracker, so this branch only ever hits legitimately HOME-transferred / event mons
+            // (3DS transfers, event legendaries, the member's own HOME mons, etc.).
+            // Never strip it — keep the tracker and skip AutoOT.
+            Log("Home tracker detected. Keeping tracker; skipping AutoOT.");
+            return toSend;
         }
 
         // Current handler cannot be past gen OT

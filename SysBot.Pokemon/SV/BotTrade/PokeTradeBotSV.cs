@@ -208,21 +208,13 @@ public class PokeTradeBotSV(PokeTradeHub<PK9> Hub, PokeBotState Config) : PokeRo
 
         if (toSend is IHomeTrack pk && pk.HasTracker)
         {
-            // SV native catches (met loc < 30000) shouldn't carry a HOME tracker — they're
-            // in-game encounters, not HOME imports. Strip a stray tracker so AutoOT can run
-            // instead of refusing the swap and shipping the bot's default OT ("Dude").
-            bool isSVNativeForAutoOT = toSend.MetLocation is > 0 and < 30000;
-            if (isSVNativeForAutoOT)
-            {
-                pk.Tracker = 0;
-                toSend.RefreshChecksum();
-                Log("Stripped HOME tracker from SV native catch to allow AutoOT.");
-            }
-            else
-            {
-                Log("Home tracker detected. Can't apply AutoOT.");
-                return toSend;
-            }
+            // A HOME tracker is only ever created by a real HOME transfer; deleting it makes the
+            // Pokemon illegal (HOME rejects it as hacked). A genuine in-game native catch has NO
+            // tracker, so this branch only ever hits legitimately HOME-transferred / event mons
+            // (3DS transfers, Crown Tundra Galarian birds, the member's own HOME mons, etc.).
+            // Never strip it — keep the tracker and skip AutoOT.
+            Log("Home tracker detected. Keeping tracker; skipping AutoOT.");
+            return toSend;
         }
 
         if (toSend.Generation != toSend.Format)
