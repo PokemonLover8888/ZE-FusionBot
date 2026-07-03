@@ -28,6 +28,25 @@ public static class Helpers<T> where T : PKM, new()
     private static bool _bdspLocIdsResolved;
     private static readonly object _bdspLocIdLock = new();
 
+    // SV Paradox species — shiny-LOCKED in Scarlet/Violet. The SV bots' older PKHeX
+    // (v26.4.11.0) does NOT enforce their shiny-lock (it builds a "valid" native shiny with the
+    // encounter's Shiny flag wrongly reported as Random), so the SV native safety net must never
+    // rebuild a SHINY of these — see IsSvShinyLocked.
+    private static readonly System.Collections.Generic.HashSet<ushort> SvParadoxSpecies = new()
+    {
+        984, 985, 986, 987, 988, 989, 990, 991, 992, 993,
+        994, 995, 1005, 1006, 1009, 1010, 1020, 1021, 1022, 1023,
+    };
+
+    // True when a SHINY of this species can't be legally caught native in SV. Covers every SV
+    // shiny-locked species (box legends, Treasures of Ruin, Loyal Three, Ogerpon, Terapagos,
+    // Pecharunt via the category flags; Paradox via the explicit set). Verified via probe against
+    // v26.4.11.0: gated species either fail this test or GetLegalNativeDirect returns null, so a
+    // native shiny is never shipped for them — while regular species (Spiritomb, Larvitar, …) pass.
+    private static bool IsSvShinyLocked(ushort species) =>
+        SpeciesCategory.IsLegendary(species) || SpeciesCategory.IsSubLegendary(species)
+        || SpeciesCategory.IsMythical(species) || SvParadoxSpecies.Contains(species);
+
     private static void ResolveBDSPLocationIds()
     {
         if (_bdspLocIdsResolved) return;
@@ -1850,12 +1869,15 @@ public static class Helpers<T> where T : PKM, new()
         // SV native safety net (same mechanism as Z-A). Rowlet/Dartrix/Kyurem etc. ARE catchable
         // natively in SV (Indigo Disk Terarium / Paldea), but the SV bots don't force native
         // priority, so ALM picks a Pokémon GO / Max Lair transfer and ships Non-Native. For a
-        // NON-shiny PK9 that's Non-Native yet has a valid native SV encounter, rebuild via the
-        // direct synchronous NativeOnly path. SHINY is intentionally left alone: some SV
-        // legendaries (e.g. Kyurem) are shiny-LOCKED, so their only legitimate shiny is a transfer
-        // (Max Lair) — and the older PKHeX on the SV bots doesn't enforce that lock, so forcing a
-        // native shiny could ship an illegal one. Non-shiny is always safe.
-        if (typeof(T) == typeof(PK9) && !template.Shiny
+        // Non-Native PK9 that has a valid native SV encounter, rebuild via the direct synchronous
+        // NativeOnly path — otherwise it ships a foreign-origin mon with NO HOME tracker, which is
+        // illegal (e.g. a Spiritomb "caught in SwSh" delivered to SV: HOME flags it hacked).
+        // SHINY: only rebuild when the species ISN'T shiny-locked in SV. The SV bots' older PKHeX
+        // doesn't enforce shiny-locks, so forcing a native shiny on a locked legendary/paradox could
+        // ship an illegal one; IsSvShinyLocked gates those out (Great Tusk/Iron Valiant etc.), while
+        // regular species like Spiritomb still get a legit native shiny. GetLegalNativeDirect's
+        // internal la.Valid is the final guard.
+        if (typeof(T) == typeof(PK9) && (!template.Shiny || !IsSvShinyLocked(template.Species))
             && pkm is PK9 svNonNative && svNonNative.Species == template.Species
             && new LegalityAnalysis(svNonNative).EncounterOriginal.Context != svNonNative.Context)
         {
