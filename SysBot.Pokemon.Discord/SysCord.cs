@@ -772,6 +772,7 @@ public sealed partial class SysCord<T> where T : PKM, new()
         if (name.Contains("hoopa")) return homeBase + "720.png";
         if (name.Contains("dian")) return homeBase + "719.png";
         if (name.Contains("groudon")) return homeBase + "383.png";
+        if (name.Contains("dialga")) return homeBase + "483.png";
         if (name.Contains("giratina")) return homeBase + "487.png";
         if (name.Contains("rayquaza")) return homeBase + "384.png";
         if (name.Contains("arceus")) return homeBase + "493.png";
@@ -794,6 +795,7 @@ public sealed partial class SysCord<T> where T : PKM, new()
         if (name.Contains("hoopa")) return homeBase + "720.png";
         if (name.Contains("dian")) return homeBase + "719.png";
         if (name.Contains("groudon")) return homeBase + "383.png";
+        if (name.Contains("dialga")) return homeBase + "483.png";
         if (name.Contains("giratina")) return homeBase + "487.png";
         if (name.Contains("rayquaza")) return homeBase + "384.png";
         if (name.Contains("arceus")) return homeBase + "493.png";
