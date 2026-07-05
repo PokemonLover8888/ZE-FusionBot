@@ -10,7 +10,10 @@ namespace SysBot.Pokemon.WinForms
 {
     public class UpdateChecker
     {
-        private const string RepositoryOwner = "Secludedly";
+        // Auto-update is DISABLED (see FetchLatestReleaseAsync). These are kept only so the type
+        // compiles; nothing contacts an external account. This is PKM-Universe's own build,
+        // deployed manually — no third-party repo can push code into the live bots.
+        private const string RepositoryOwner = "PokemonLover8888";
         private const string RepositoryName = "PKM-Universe-Bot";
 
         // Reuse HttpClient for better performance and socket management
@@ -61,26 +64,13 @@ namespace SysBot.Pokemon.WinForms
 
         private static async Task<ReleaseInfo?> FetchLatestReleaseAsync()
         {
-            try
-            {
-                string releasesUrl = $"https://api.github.com/repos/{RepositoryOwner}/{RepositoryName}/releases/latest";
-                HttpResponseMessage response = await _httpClient.GetAsync(releasesUrl);
-
-                if (!response.IsSuccessStatusCode)
-                {
-                    string errorContent = await response.Content.ReadAsStringAsync();
-                    Console.WriteLine($"GitHub API Error: {response.StatusCode} - {errorContent}");
-                    return null;
-                }
-
-                string jsonContent = await response.Content.ReadAsStringAsync();
-                return JsonConvert.DeserializeObject<ReleaseInfo>(jsonContent);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error fetching release info: {ex.Message}");
-                return null;
-            }
+            // AUTO-UPDATE DISABLED. PKM-Universe Bot is built and deployed manually, so the bot must
+            // never fetch releases from any external GitHub account. Returning null means "no update
+            // available" across CheckForUpdatesAsync / FetchChangelogAsync / FetchDownloadUrlAsync,
+            // with no network call at all. To re-enable later, restore the api.github.com fetch and
+            // point RepositoryOwner/RepositoryName at your OWN repo.
+            await Task.CompletedTask;
+            return null;
         }
 
         private static bool IsUpdateRequired(string? changelogBody)
