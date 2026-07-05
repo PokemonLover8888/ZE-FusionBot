@@ -975,6 +975,11 @@ public sealed partial class SysCord<T> where T : PKM, new()
         var game = Hub.Config.Discord.BotGameStatus;
         if (!string.IsNullOrWhiteSpace(game))
             await _client.SetGameAsync(game).ConfigureAwait(false);
+
+        // Go Online immediately now that the gateway is ready (this runs on connect). MonitorStatusAsync
+        // re-asserts it periodically; setting it here means the bot turns green within seconds of a
+        // restart instead of waiting for the monitor loop's next cycle.
+        await _client.SetStatusAsync(UserStatus.Online).ConfigureAwait(false);
     }
 
     private async Task MonitorStatusAsync(CancellationToken token)
@@ -987,17 +992,20 @@ public sealed partial class SysCord<T> where T : PKM, new()
         // gateway reconnect can't leave it stale — 6 updates/hour is far under any rate limit.
         while (!token.IsCancellationRequested)
         {
+            bool connected = _client.ConnectionState == ConnectionState.Connected;
             try
             {
-                if (_client.ConnectionState == ConnectionState.Connected)
+                if (connected)
                     await _client.SetStatusAsync(UserStatus.Online).ConfigureAwait(false);
-                await Task.Delay(TimeSpan.FromMinutes(10), token).ConfigureAwait(false);
+                // While not yet connected, poll every few seconds so the bot goes green right after a
+                // (re)connect. Once Online, re-assert only every 10 min (6/hr — well under the limit).
+                await Task.Delay(connected ? TimeSpan.FromMinutes(10) : TimeSpan.FromSeconds(5), token).ConfigureAwait(false);
             }
             catch (TaskCanceledException) { break; }
             catch (Exception ex)
             {
                 LogUtil.LogInfo("SysCord", $"MonitorStatusAsync: {ex.Message}");
-                await Task.Delay(TimeSpan.FromMinutes(1), token).ConfigureAwait(false);
+                await Task.Delay(TimeSpan.FromSeconds(30), token).ConfigureAwait(false);
             }
         }
     }
