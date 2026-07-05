@@ -213,7 +213,7 @@ namespace SysBot.Pokemon.WinForms
             try
             {
                 using var client = new HttpClient();
-                var fontsUrl = "https://github.com/Secludedly/ZE-FusionBot/raw/refs/heads/main/.extra/Fonts.7z";
+                var fontsUrl = "https://github.com/PokemonLover8888/ZE-FusionBot/raw/refs/heads/main/.extra/Fonts.7z";
 
                 LogUtil.LogInfo($"Downloading fonts from {fontsUrl}...", "Fonts");
 
