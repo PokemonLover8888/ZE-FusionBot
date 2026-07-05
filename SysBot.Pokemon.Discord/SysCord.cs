@@ -979,44 +979,26 @@ public sealed partial class SysCord<T> where T : PKM, new()
 
     private async Task MonitorStatusAsync(CancellationToken token)
     {
-        const int Interval = 20; // seconds
-
-        // Check datetime for update
-        UserStatus state = UserStatus.Idle;
+        // Hold a STEADY Online presence. The bot used to flip its status (Online/Idle/DoNotDisturb)
+        // every ~20s based on queue/trade activity. Discord rate-limits presence updates (~5 per 20s
+        // per session), so the constant flapping caused Discord to stop applying updates and render
+        // the bot as OFFLINE even though it was connected and trading fine (raid bots that hold a
+        // steady presence stayed green). Set Online once, then only re-assert every 10 minutes so a
+        // gateway reconnect can't leave it stale — 6 updates/hour is far under any rate limit.
         while (!token.IsCancellationRequested)
         {
-            var time = DateTime.Now;
-            var lastLogged = LogUtil.LastLogged;
-            if (Hub.Config.Discord.BotColorStatusTradeOnly)
+            try
             {
-                var recent = Hub.Bots.ToArray()
-                    .Where(z => z.Config.InitialRoutine.IsTradeBot())
-                    .MaxBy(z => z.LastTime);
-                lastLogged = recent?.LastTime ?? time;
+                if (_client.ConnectionState == ConnectionState.Connected)
+                    await _client.SetStatusAsync(UserStatus.Online).ConfigureAwait(false);
+                await Task.Delay(TimeSpan.FromMinutes(10), token).ConfigureAwait(false);
             }
-            var delta = time - lastLogged;
-            var gap = TimeSpan.FromSeconds(Interval) - delta;
-
-            bool noQueue = !Hub.Queues.Info.GetCanQueue();
-            if (gap <= TimeSpan.Zero)
+            catch (TaskCanceledException) { break; }
+            catch (Exception ex)
             {
-                var idle = noQueue ? UserStatus.DoNotDisturb : UserStatus.Idle;
-                if (idle != state)
-                {
-                    state = idle;
-                    await _client.SetStatusAsync(state).ConfigureAwait(false);
-                }
-                await Task.Delay(2_000, token).ConfigureAwait(false);
-                continue;
+                LogUtil.LogInfo("SysCord", $"MonitorStatusAsync: {ex.Message}");
+                await Task.Delay(TimeSpan.FromMinutes(1), token).ConfigureAwait(false);
             }
-
-            var active = noQueue ? UserStatus.DoNotDisturb : UserStatus.Online;
-            if (active != state)
-            {
-                state = active;
-                await _client.SetStatusAsync(state).ConfigureAwait(false);
-            }
-            await Task.Delay(gap, token).ConfigureAwait(false);
         }
     }
 
