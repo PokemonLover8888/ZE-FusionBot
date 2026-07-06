@@ -75,21 +75,21 @@ public static class QueueHelper<T> where T : PKM, new()
 
     private static readonly Dictionary<int, string> MilestoneImages = new()
     {
-        { 1, "https://raw.githubusercontent.com/Secludedly/ZE-FusionBot-Sprite-Images/main/001.png" },
-        { 50, "https://raw.githubusercontent.com/Secludedly/ZE-FusionBot-Sprite-Images/main/050.png" },
-        { 100, "https://raw.githubusercontent.com/Secludedly/ZE-FusionBot-Sprite-Images/main/100.png" },
-        { 150, "https://raw.githubusercontent.com/Secludedly/ZE-FusionBot-Sprite-Images/main/150.png" },
-        { 200, "https://raw.githubusercontent.com/Secludedly/ZE-FusionBot-Sprite-Images/main/200.png" },
-        { 250, "https://raw.githubusercontent.com/Secludedly/ZE-FusionBot-Sprite-Images/main/250.png" },
-        { 300, "https://raw.githubusercontent.com/Secludedly/ZE-FusionBot-Sprite-Images/main/300.png" },
-        { 350, "https://raw.githubusercontent.com/Secludedly/ZE-FusionBot-Sprite-Images/main/350.png" },
-        { 400, "https://raw.githubusercontent.com/Secludedly/ZE-FusionBot-Sprite-Images/main/400.png" },
-        { 450, "https://raw.githubusercontent.com/Secludedly/ZE-FusionBot-Sprite-Images/main/450.png" },
-        { 500, "https://raw.githubusercontent.com/Secludedly/ZE-FusionBot-Sprite-Images/main/500.png" },
-        { 550, "https://raw.githubusercontent.com/Secludedly/ZE-FusionBot-Sprite-Images/main/550.png" },
-        { 600, "https://raw.githubusercontent.com/Secludedly/ZE-FusionBot-Sprite-Images/main/600.png" },
-        { 650, "https://raw.githubusercontent.com/Secludedly/ZE-FusionBot-Sprite-Images/main/650.png" },
-        { 700, "https://raw.githubusercontent.com/Secludedly/ZE-FusionBot-Sprite-Images/main/700.png" }
+        { 1, "https://raw.githubusercontent.com/PokemonLover8888/PKM-Universe-Sprite-Images/main/001.png" },
+        { 50, "https://raw.githubusercontent.com/PokemonLover8888/PKM-Universe-Sprite-Images/main/050.png" },
+        { 100, "https://raw.githubusercontent.com/PokemonLover8888/PKM-Universe-Sprite-Images/main/100.png" },
+        { 150, "https://raw.githubusercontent.com/PokemonLover8888/PKM-Universe-Sprite-Images/main/150.png" },
+        { 200, "https://raw.githubusercontent.com/PokemonLover8888/PKM-Universe-Sprite-Images/main/200.png" },
+        { 250, "https://raw.githubusercontent.com/PokemonLover8888/PKM-Universe-Sprite-Images/main/250.png" },
+        { 300, "https://raw.githubusercontent.com/PokemonLover8888/PKM-Universe-Sprite-Images/main/300.png" },
+        { 350, "https://raw.githubusercontent.com/PokemonLover8888/PKM-Universe-Sprite-Images/main/350.png" },
+        { 400, "https://raw.githubusercontent.com/PokemonLover8888/PKM-Universe-Sprite-Images/main/400.png" },
+        { 450, "https://raw.githubusercontent.com/PokemonLover8888/PKM-Universe-Sprite-Images/main/450.png" },
+        { 500, "https://raw.githubusercontent.com/PokemonLover8888/PKM-Universe-Sprite-Images/main/500.png" },
+        { 550, "https://raw.githubusercontent.com/PokemonLover8888/PKM-Universe-Sprite-Images/main/550.png" },
+        { 600, "https://raw.githubusercontent.com/PokemonLover8888/PKM-Universe-Sprite-Images/main/600.png" },
+        { 650, "https://raw.githubusercontent.com/PokemonLover8888/PKM-Universe-Sprite-Images/main/650.png" },
+        { 700, "https://raw.githubusercontent.com/PokemonLover8888/PKM-Universe-Sprite-Images/main/700.png" }
     };
 
     private static string GetMilestoneDescription(int tradeCount)
@@ -246,11 +246,11 @@ public static class QueueHelper<T> where T : PKM, new()
         {
             (string embedImageUrl, DiscordColor embedColor) = await PrepareEmbedDetails(pk);
 
-            embedData.EmbedImageUrl = isMysteryEgg ? "https://raw.githubusercontent.com/Secludedly/ZE-FusionBot-Sprite-Images/main/mysteryegg3.png?raw=true&width=300&height=300" :
-            type == PokeRoutineType.Dump ? "https://raw.githubusercontent.com/Secludedly/ZE-FusionBot-Sprite-Images/main/Dumping.png?raw=true&width=300&height=300" :
-            type == PokeRoutineType.Clone ? "https://raw.githubusercontent.com/Secludedly/ZE-FusionBot-Sprite-Images/main/Cloning.png?raw=true&width=300&height=300" :
-            type == PokeRoutineType.SeedCheck ? "https://raw.githubusercontent.com/Secludedly/ZE-FusionBot-Sprite-Images/main/Seeding.png?raw=true&width=300&height=300" :
-            type == PokeRoutineType.FixOT ? "https://raw.githubusercontent.com/Secludedly/ZE-FusionBot-Sprite-Images/main/FixOTing.png?raw=true&width=300&height=300" :
+            embedData.EmbedImageUrl = isMysteryEgg ? "https://raw.githubusercontent.com/PokemonLover8888/PKM-Universe-Sprite-Images/main/mysteryegg3.png?raw=true&width=300&height=300" :
+            type == PokeRoutineType.Dump ? "https://raw.githubusercontent.com/PokemonLover8888/PKM-Universe-Sprite-Images/main/Dumping.png?raw=true&width=300&height=300" :
+            type == PokeRoutineType.Clone ? "https://raw.githubusercontent.com/PokemonLover8888/PKM-Universe-Sprite-Images/main/Cloning.png?raw=true&width=300&height=300" :
+            type == PokeRoutineType.SeedCheck ? "https://raw.githubusercontent.com/PokemonLover8888/PKM-Universe-Sprite-Images/main/Seeding.png?raw=true&width=300&height=300" :
+            type == PokeRoutineType.FixOT ? "https://raw.githubusercontent.com/PokemonLover8888/PKM-Universe-Sprite-Images/main/FixOTing.png?raw=true&width=300&height=300" :
                                        embedImageUrl;
 
             embedData.HeldItemUrl = string.Empty;
@@ -326,23 +326,23 @@ public static class QueueHelper<T> where T : PKM, new()
             {
                 if (homeTrack.HasTracker && isNonNative)
                 {
-                    embedBuilder.Footer.IconUrl = "https://raw.githubusercontent.com/Secludedly/ZE-FusionBot-Sprite-Images/main/exclamation.gif";
+                    embedBuilder.Footer.IconUrl = "https://raw.githubusercontent.com/PokemonLover8888/PKM-Universe-Sprite-Images/main/exclamation.gif";
                     embedBuilder.AddField("**__Notice__**: **This Pokemon is Non-Native & Has Home Tracker.**", "*AutoOT not applied.*" + swshHint);
                 }
                 else if (homeTrack.HasTracker)
                 {
-                    embedBuilder.Footer.IconUrl = "https://raw.githubusercontent.com/Secludedly/ZE-FusionBot-Sprite-Images/main/exclamation.gif";
+                    embedBuilder.Footer.IconUrl = "https://raw.githubusercontent.com/PokemonLover8888/PKM-Universe-Sprite-Images/main/exclamation.gif";
                     embedBuilder.AddField("**__Notice__**: **Home Tracker Detected.**", "*AutoOT not applied.*");
                 }
                 else if (isNonNative)
                 {
-                    embedBuilder.Footer.IconUrl = "https://raw.githubusercontent.com/Secludedly/ZE-FusionBot-Sprite-Images/main/exclamation.gif";
+                    embedBuilder.Footer.IconUrl = "https://raw.githubusercontent.com/PokemonLover8888/PKM-Universe-Sprite-Images/main/exclamation.gif";
                     embedBuilder.AddField("**__Notice__**: **This Pokemon is Non-Native.**", "*Cannot enter HOME & AutoOT not applied.*" + swshHint);
                 }
             }
             else if (isNonNative)
             {
-                embedBuilder.Footer.IconUrl = "https://raw.githubusercontent.com/Secludedly/ZE-FusionBot-Sprite-Images/main/exclamation.gif";
+                embedBuilder.Footer.IconUrl = "https://raw.githubusercontent.com/PokemonLover8888/PKM-Universe-Sprite-Images/main/exclamation.gif";
                 embedBuilder.AddField("**__Notice__**: **This Pokemon is Non-Native.**", "*Cannot enter HOME & AutoOT not applied.*" + swshHint);
             }
 
@@ -546,7 +546,7 @@ public static class QueueHelper<T> where T : PKM, new()
                     {
                         if (homeTrack.HasTracker)
                         {
-                            embedBuilder.Footer.IconUrl = "https://raw.githubusercontent.com/Secludedly/ZE-FusionBot-Sprite-Images/main/exclamation.gif";
+                            embedBuilder.Footer.IconUrl = "https://raw.githubusercontent.com/PokemonLover8888/PKM-Universe-Sprite-Images/main/exclamation.gif";
                             embedBuilder.AddField("**__Notice__**: **Home Tracker Detected.**", "*AutoOT not applied.*");
                         }
                     }
@@ -970,7 +970,7 @@ public static class QueueHelper<T> where T : PKM, new()
             ? typeNames[typeIndex]
             : "Normal";
 
-        return $"https://raw.githubusercontent.com/Secludedly/ZE-FusionBot-Sprite-Images/main/Eggs/Egg_{typeName}.png";
+        return $"https://raw.githubusercontent.com/PokemonLover8888/PKM-Universe-Sprite-Images/main/Eggs/Egg_{typeName}.png";
     }
 
     public static (string, Embed) CreateLGLinkCodeSpriteEmbed(List<Pictocodes> lgcode)

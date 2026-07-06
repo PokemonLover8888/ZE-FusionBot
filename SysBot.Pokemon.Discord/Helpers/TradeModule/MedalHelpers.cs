@@ -38,7 +38,7 @@ public static class MedalHelpers
 
         if (milestone > 0)
         {
-            string imageUrl = $"https://raw.githubusercontent.com/Secludedly/ZE-FusionBot-Sprite-Images/main/{milestone:D3}.png";
+            string imageUrl = $"https://raw.githubusercontent.com/PokemonLover8888/PKM-Universe-Sprite-Images/main/{milestone:D3}.png";
             return new EmbedBuilder()
                 .WithTitle($"{user.Username}'s Trading Status")
                 .WithColor(new Color(255, 215, 0))

@@ -97,7 +97,7 @@ namespace FusionBot.Modules
 
             // Get medal info
             var (milestone, medalTitle, embedColor) = GetMedalInfo(totalTrades);
-            string medalImageUrl = $"https://raw.githubusercontent.com/Secludedly/ZE-FusionBot-Sprite-Images/main/{milestone:D3}.png";
+            string medalImageUrl = $"https://raw.githubusercontent.com/PokemonLover8888/PKM-Universe-Sprite-Images/main/{milestone:D3}.png";
 
             // Calculate level and progress
             int level = CalculateLevel(totalTrades);

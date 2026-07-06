@@ -136,7 +136,7 @@ public static class DetailsExtractor<T> where T : PKM, new()
     {
         if (isCloneRequest || isSpecialRequest)
         {
-            embedBuilder.WithThumbnailUrl("https://raw.githubusercontent.com/Secludedly/ZE-FusionBot-Sprite-Images/main/profoak.png");
+            embedBuilder.WithThumbnailUrl("https://raw.githubusercontent.com/PokemonLover8888/PKM-Universe-Sprite-Images/main/profoak.png");
         }
         else if (!string.IsNullOrEmpty(heldItemUrl))
         {

@@ -409,7 +409,7 @@ public class OwnerModule<T> : SudoModule<T> where T : PKM, new()
             Description = message,
             Color = (DiscordColor?)Color.Gold,
             Timestamp = DateTimeOffset.Now,
-            ThumbnailUrl = "https://raw.githubusercontent.com/Secludedly/ZE-FusionBot-Sprite-Images/main/pikamail.png"
+            ThumbnailUrl = "https://raw.githubusercontent.com/PokemonLover8888/PKM-Universe-Sprite-Images/main/pikamail.png"
         };
 
         try
@@ -542,7 +542,7 @@ public class OwnerModule<T> : SudoModule<T> where T : PKM, new()
         var embed0 = new EmbedBuilder()
             .WithTitle("//////--SYSDVR SETUP INSTRUCTIONS--//////");
 
-        embed0.WithImageUrl("https://raw.githubusercontent.com/Secludedly/ZE-FusionBot-Sprite-Images/main/homereadybreak.png");
+        embed0.WithImageUrl("https://raw.githubusercontent.com/PokemonLover8888/PKM-Universe-Sprite-Images/main/homereadybreak.png");
         var message0 = await ReplyAsync(embed: embed0.Build());
 
 
@@ -559,7 +559,7 @@ public class OwnerModule<T> : SudoModule<T> where T : PKM, new()
                       "- Rename the bat file to **SysDVR.bat.**\n" +
                       "- You can then use the `dvrstart` command once you add SysDVR to your Switch.");
 
-        embed1.WithImageUrl("https://raw.githubusercontent.com/Secludedly/ZE-FusionBot-Sprite-Images/main/homereadybreak.png");
+        embed1.WithImageUrl("https://raw.githubusercontent.com/PokemonLover8888/PKM-Universe-Sprite-Images/main/homereadybreak.png");
         var message1 = await ReplyAsync(embed: embed1.Build());
 
 
@@ -574,7 +574,7 @@ public class OwnerModule<T> : SudoModule<T> where T : PKM, new()
                       "- Select **Save and exit.**\n" +
                       "- As long as you followed Step 01, the `dvrstart` command can be used.\n");
 
-        embed2.WithImageUrl("https://raw.githubusercontent.com/Secludedly/ZE-FusionBot-Sprite-Images/main/homereadybreak.png");
+        embed2.WithImageUrl("https://raw.githubusercontent.com/PokemonLover8888/PKM-Universe-Sprite-Images/main/homereadybreak.png");
         var message2 = await ReplyAsync(embed: embed2.Build());
 
         _ = Task.Run(async () =>

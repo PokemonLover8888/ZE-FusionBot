@@ -54,7 +54,7 @@ namespace SysBot.Pokemon.Discord.Modules
             var embed = new EmbedBuilder()
                 .WithAuthor(a => a
                     .WithName("PKM Universe — HOME-Ready Module")
-                    .WithIconUrl("https://raw.githubusercontent.com/Secludedly/ZE-FusionBot-Sprite-Images/main/homereadybreak.png"))
+                    .WithIconUrl("https://raw.githubusercontent.com/PokemonLover8888/PKM-Universe-Sprite-Images/main/homereadybreak.png"))
                 .WithTitle("✨ Request ANY HOME-Tracked Event Pokémon ✨")
                 .WithDescription(
                     $"Browse a curated library of **{totalFiles:N0}** event Pokémon with real HOME trackers — " +
@@ -63,7 +63,7 @@ namespace SysBot.Pokemon.Discord.Modules
                     "*Note: each event Pokémon has a target game (SwSh / SV / BDSP / LGPE). " +
                     "The bot tells you which one in the list — use the matching bot to trade for it.*")
                 .WithColor(new Color(0xFF, 0xD7, 0x00)) // PKM Universe gold
-                .WithThumbnailUrl("https://raw.githubusercontent.com/Secludedly/ZE-FusionBot-Sprite-Images/main/homereadybreak.png")
+                .WithThumbnailUrl("https://raw.githubusercontent.com/PokemonLover8888/PKM-Universe-Sprite-Images/main/homereadybreak.png")
                 .AddField($"🔍  Search — `{Prefix}ll <Pokémon>`",
                     $"List every available file for a species.\n*Example: `{Prefix}ll Mewtwo`*\n_Alias: `{Prefix}hrl`_",
                     inline: false)
@@ -74,7 +74,7 @@ namespace SysBot.Pokemon.Discord.Modules
                     $"Queue the file shown at that index from your most recent list.\n*Example: `{Prefix}lr 682`*\n_Alias: `{Prefix}hrr`_",
                     inline: false)
                 .WithFooter($"Tip: list first, then request by index. Auto-deletes in 90s.",
-                    "https://raw.githubusercontent.com/Secludedly/ZE-FusionBot-Sprite-Images/main/exclamation.gif")
+                    "https://raw.githubusercontent.com/PokemonLover8888/PKM-Universe-Sprite-Images/main/exclamation.gif")
                 .WithCurrentTimestamp();
 
             var msg = await ReplyAsync(embed: embed.Build()).ConfigureAwait(false);

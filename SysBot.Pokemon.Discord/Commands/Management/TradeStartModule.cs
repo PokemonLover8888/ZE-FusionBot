@@ -111,7 +111,7 @@ public class TradeStartModule<T> : ModuleBase<SocketCommandContext> where T : PK
                 : "";
 
             string ballImgUrl =
-                "https://raw.githubusercontent.com/Secludedly/ZE-FusionBot-Sprite-Images/main/dm-uhoherror.gif";
+                "https://raw.githubusercontent.com/PokemonLover8888/PKM-Universe-Sprite-Images/main/dm-uhoherror.gif";
 
             if (detail.TradeData != null &&
                 detail.Type is not (PokeTradeType.Clone or PokeTradeType.Dump or PokeTradeType.Seed or PokeTradeType.FixOT))
@@ -126,7 +126,7 @@ public class TradeStartModule<T> : ModuleBase<SocketCommandContext> where T : PK
                     : (ballName.Contains("(la)") ? "la" + ballName : ballName);
 
                 ballImgUrl =
-                    $"https://raw.githubusercontent.com/Secludedly/ZE-FusionBot-Sprite-Images/main/AltBallImg/28x28/{ballName}.png";
+                    $"https://raw.githubusercontent.com/PokemonLover8888/PKM-Universe-Sprite-Images/main/AltBallImg/28x28/{ballName}.png";
             }
 
             string tradeTitle = detail.IsMysteryEgg
@@ -141,13 +141,13 @@ public class TradeStartModule<T> : ModuleBase<SocketCommandContext> where T : PK
                 };
 
             string embedImageUrl = detail.IsMysteryEgg
-                ? "https://raw.githubusercontent.com/Secludedly/ZE-FusionBot-Sprite-Images/main/mysteryegg3.png"
+                ? "https://raw.githubusercontent.com/PokemonLover8888/PKM-Universe-Sprite-Images/main/mysteryegg3.png"
                 : detail.Type switch
                 {
-                    PokeTradeType.Clone => "https://raw.githubusercontent.com/Secludedly/ZE-FusionBot-Sprite-Images/main/Cloning.png",
-                    PokeTradeType.Dump => "https://raw.githubusercontent.com/Secludedly/ZE-FusionBot-Sprite-Images/main/Dumping.png",
-                    PokeTradeType.FixOT => "https://raw.githubusercontent.com/Secludedly/ZE-FusionBot-Sprite-Images/main/FixOTing.png",
-                    PokeTradeType.Seed => "https://raw.githubusercontent.com/Secludedly/ZE-FusionBot-Sprite-Images/main/Seeding.png",
+                    PokeTradeType.Clone => "https://raw.githubusercontent.com/PokemonLover8888/PKM-Universe-Sprite-Images/main/Cloning.png",
+                    PokeTradeType.Dump => "https://raw.githubusercontent.com/PokemonLover8888/PKM-Universe-Sprite-Images/main/Dumping.png",
+                    PokeTradeType.FixOT => "https://raw.githubusercontent.com/PokemonLover8888/PKM-Universe-Sprite-Images/main/FixOTing.png",
+                    PokeTradeType.Seed => "https://raw.githubusercontent.com/PokemonLover8888/PKM-Universe-Sprite-Images/main/Seeding.png",
                     _ => TradeExtensions<T>.PokeImg(detail.TradeData!, false, true)
                 };
 
