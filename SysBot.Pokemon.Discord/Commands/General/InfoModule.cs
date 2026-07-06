@@ -31,7 +31,7 @@ namespace SysBot.Pokemon.Discord
             builder.AddField("Info",
                 $"- {Format.Bold("Owner")}: {app.Owner} ({app.Owner.Id})\n" +
                 $"- {Format.Bold("Original Repo")}: {("[SysBot.Net](https://github.com/kwsch/SysBot.NET)")}\n" +
-                $"- {Format.Bold("This Bot")}: {("[PKM Universe](https://github.com/PokemonLover8888/ZE-FusionBot)")}\n" +
+                $"- {Format.Bold("This Bot")}: {("[PKM Universe](https://github.com/PokemonLover8888/PKM-Universe-Bot)")}\n" +
                 $"- {Format.Bold("Forked From")}: {("[PokeBot](https://github.com/hexbyt3/PokeBot)")}\n" +
                 $"- {Format.Bold("Library")}: Discord.Net ({DiscordConfig.Version})\n" +
                 $"- {Format.Bold("Uptime")}: {GetUptime()}\n" +

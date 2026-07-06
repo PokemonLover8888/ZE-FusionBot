@@ -10,7 +10,7 @@
   🌐 Visit <a href="https://creator.pkm-universe.com/">creator.pkm-universe.com</a> to join the community!
 </h3>
 
-> ⚠️ **Font Notice:** If the program's fonts are not displaying properly, download them [here](https://github.com/PokemonLover8888/ZE-FusionBot/blob/main/.extra/Fonts.7z) and install them on your machine.
+> ⚠️ **Font Notice:** If the program's fonts are not displaying properly, download them [here](https://github.com/PokemonLover8888/PKM-Universe-Bot/blob/main/.extra/Fonts.7z) and install them on your machine.
 
 > 🧬 **Heritage:** PKM Universe Reborn's bot is a branded fork of **[Secludedly's ZE-FusionBot](https://github.com/Secludedly/ZE-FusionBot)**, which itself builds on **[hexbyt3's PokeBot](https://github.com/hexbyt3/PokeBot)** and the wider SysBot.NET ecosystem. Full credits below — none of this exists without them.
 
