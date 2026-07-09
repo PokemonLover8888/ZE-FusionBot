@@ -883,10 +883,24 @@ public static class Helpers<T> where T : PKM, new()
                                         // the seed correlation (verified by probe). The result stays genuinely
                                         // legal; the only flag that can remain is a custom held item PKHeX hasn't
                                         // catalogued for Z-A yet, which the narrow item bypass below ships.
-                                        if (preMade is PA9 && set != null)
+                                        if ((preMade is PA9 || preMade is PK9) && set != null)
                                         {
                                             try
                                             {
+                                                // LEVEL — raise only, never lower. Event/DB mons (e.g. a HOME-tracker GO Mew)
+                                                // ship at their distribution level (15); leveling UP keeps the met level intact
+                                                // and is always legal, while lowering below the caught level is not. Act only on
+                                                // an explicit "Level: N" request (reqLevel 0 = unspecified → keep the file's level,
+                                                // so collectors still get the as-is event mon when they don't ask for a level).
+                                                int pmReqLevel = 0;
+                                                var lvlLine = set.GetSetLines().FirstOrDefault(l => l.TrimStart().StartsWith("Level", StringComparison.OrdinalIgnoreCase));
+                                                if (lvlLine != null) { var ci = lvlLine.IndexOf(':'); if (ci >= 0) int.TryParse(lvlLine[(ci + 1)..].Trim(), out pmReqLevel); }
+                                                if (pmReqLevel > preMade.CurrentLevel && pmReqLevel <= 100)
+                                                {
+                                                    preMade.CurrentLevel = (byte)pmReqLevel;
+                                                    LogUtil.LogInfo($"[TradeModule] Pre-made {preMade.Species}: leveled up to {pmReqLevel} (was lower; met level unchanged)", "Helpers");
+                                                }
+
                                                 if (set.EVs is { Length: 6 } && Array.Exists(set.EVs, e => e > 0))
                                                     preMade.SetEVs(set.EVs);
 
@@ -2240,6 +2254,27 @@ public static class Helpers<T> where T : PKM, new()
             return Task.FromResult(new ProcessedPokemonResult<T>
             {
                 Error = $"**{spcName} can't be made as a native Legends: Z-A Pokémon.**\n{detail}\n\nZ-A bots only deliver native, HOME-legal Pokémon — so this request was declined instead of shipping a glitchy non-native copy. Please use a Z-A-legal set, or request this exact Pokémon from a **Scarlet/Violet** or **SwSh** bot instead.",
+                ShowdownSet = set
+            });
+        }
+
+        // ── SV: DECLINE instead of shipping a Non-Native, tracker-less encounter ──
+        // If a request has no native Scarlet/Violet encounter, ALM falls back to a
+        // Pokémon GO / SwSh / transfer encounter with NO HOME tracker — illegal in SV
+        // (HOME flags it "hacked"). We decline rather than look at other games and ship
+        // that. The ONLY exceptions: pre-made DB files (result == "PreMadeFile") and
+        // anything carrying a real HOME tracker (mythicals get one added earlier) —
+        // those are HOME-legal cross-origin mons and still ship normally.
+        if (typeof(T) == typeof(PK9) && isNonNative && result != "PreMadeFile"
+            && !(pk is IHomeTrack svTrk && svTrk.HasTracker))
+        {
+            var spcName = GameInfo.Strings.Species[template.Species];
+            LogUtil.LogInfo($"[TradeModule] SV declined {spcName}: no native S/V encounter and the non-native fallback has no HOME tracker", "Helpers");
+            return Task.FromResult(new ProcessedPokemonResult<T>
+            {
+                Error = $"**No valid Scarlet/Violet encounter found for {spcName}.**\n" +
+                        "This Pokémon can't be legally generated in Scarlet/Violet, and borrowing an encounter from another game without a HOME tracker would be illegal (HOME flags it as hacked).\n\n" +
+                        "The request was declined instead of sending an illegal Pokémon. Please request a Pokémon that's obtainable in Scarlet/Violet, or get this exact Pokémon from the matching game's bot (e.g. **SwSh**) so it can transfer up with a valid HOME tracker.",
                 ShowdownSet = set
             });
         }
