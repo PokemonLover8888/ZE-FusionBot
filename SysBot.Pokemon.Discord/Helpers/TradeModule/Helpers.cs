@@ -594,22 +594,30 @@ public static class Helpers<T> where T : PKM, new()
                     }
                 }
 
-                // Z-A: max Scale (255) requires Alpha. PKHeX's Z-A data is incomplete and does
-                // NOT enforce this, so a member who sets .Scale=255 without Alpha gets a non-alpha
-                // size-255 mon that reads "valid" locally but Pokémon HOME rejects on deposit.
-                // When that happens, regenerate the same set as an Alpha (which legitimately is
-                // size 255), and use it only if it comes out a valid Alpha — otherwise keep the
-                // original (e.g. a species with no Alpha encounter).
-                if (pkm is PA9 { Scale: 255, IsAlpha: false }
+                // Legends Z-A (PA9) & Legends: Arceus (PA8): Scale 255 ALWAYS means Alpha in these
+                // games. PKHeX's data doesn't enforce it, so a member who asks for Scale 255 without
+                // "Alpha: Yes" gets one of two broken outcomes: a non-Alpha size-255 mon (HOME rejects
+                // on deposit), OR — as Rex hit — ALM silently resets the scale to a legal value (e.g.
+                // 97) so the request is lost. We therefore detect the REQUESTED scale from the raw set
+                // (not the generated pkm, whose scale may already be reset), and whenever 255 is asked
+                // for in these games we regenerate the set as an Alpha (legitimately size 255) and
+                // label it Alpha even if it wasn't explicitly requested. Keep the original only when no
+                // valid Alpha can be made (e.g. a species with no Alpha encounter). Alpha exists ONLY
+                // in PLA/ZA, so nothing here touches other games.
+                bool wantsScale255 = System.Text.RegularExpressions.Regex.IsMatch(
+                    contentWithoutLanguage, @"(?im)^\s*\.?(Scale|HeightScalar)\s*=\s*255\s*$");
+                bool alreadyAlpha255 = pkm is PA9 { IsAlpha: true, Scale: 255 } || pkm is PA8 { IsAlpha: true, Scale: 255 };
+                if (wantsScale255 && (pkm is PA9 or PA8) && !alreadyAlpha255
                     && !contentWithoutLanguage.Contains("Alpha:", StringComparison.OrdinalIgnoreCase))
                 {
                     var alphaTemplate = AutoLegalityWrapper.GetTemplate(new ShowdownSet(contentWithoutLanguage + "\nAlpha: Yes"));
                     var alphaPkm = sav.GetLegalForTrade(alphaTemplate, out var alphaResult);
-                    if (alphaPkm is PA9 { IsAlpha: true, Scale: 255 } && new LegalityAnalysis(alphaPkm).Valid)
+                    if ((alphaPkm is PA9 { IsAlpha: true, Scale: 255 } || alphaPkm is PA8 { IsAlpha: true, Scale: 255 })
+                        && new LegalityAnalysis(alphaPkm).Valid)
                     {
                         pkm = alphaPkm;
                         result = alphaResult;
-                        LogUtil.LogInfo($"[TradeModule] Z-A {pkm.Species}: Scale 255 forced Alpha (size 255 must be Alpha for HOME)", "Helpers");
+                        LogUtil.LogInfo($"[TradeModule] Legends {pkm.Species}: Scale 255 forced Alpha (size 255 = Alpha in PLA/ZA)", "Helpers");
                     }
                 }
 
