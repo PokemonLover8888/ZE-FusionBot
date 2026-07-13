@@ -31,7 +31,14 @@ public static class BatchHelpers<T> where T : PKM, new()
         // Parse hypertraining preferences before processing
         var userHTPreferences = AutoLegalityExtensionsDiscord.ParseHyperTrainingCommandsPublic(tradeContent);
 
-        var result = await Helpers<T>.ProcessShowdownSetAsync(tradeContent);
+        // Same rule single trades use: an explicit OT/TID/SID means the member wants THAT trainer
+        // info, so AutoOT must not overwrite it. Batch trades never did this, so a requested OT was
+        // silently replaced by the partner's in-game OT.
+        var ignoreAutoOT = tradeContent.Contains("OT:") ||
+                           tradeContent.Contains("TID:") ||
+                           tradeContent.Contains("SID:");
+
+        var result = await Helpers<T>.ProcessShowdownSetAsync(tradeContent, ignoreAutoOT);
 
         if (result.Pokemon != null)
         {
@@ -255,13 +262,13 @@ public static class BatchHelpers<T> where T : PKM, new()
     }
 
     public static async Task ProcessBatchContainer(SocketCommandContext context, List<T> batchPokemonList,
-        int batchTradeCode, int totalTrades)
+        int batchTradeCode, int totalTrades, bool ignoreAutoOT = false)
     {
         var sig = context.User.GetFavor();
         var firstPokemon = batchPokemonList[0];
 
         await QueueHelper<T>.AddBatchContainerToQueueAsync(context, batchTradeCode, context.User.Username,
-            firstPokemon, batchPokemonList, sig, context.User, totalTrades).ConfigureAwait(false);
+            firstPokemon, batchPokemonList, sig, context.User, totalTrades, ignoreAutoOT).ConfigureAwait(false);
     }
 
     public static string BuildDetailedBatchErrorMessage(List<BatchTradeError> errors, int totalTrades)

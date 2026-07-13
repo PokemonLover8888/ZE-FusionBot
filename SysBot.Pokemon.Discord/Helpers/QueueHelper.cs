@@ -399,7 +399,7 @@ public static class QueueHelper<T> where T : PKM, new()
         return new TradeQueueResult(true);
     }
 
-    public static async Task AddBatchContainerToQueueAsync(SocketCommandContext context, int code, string trainer, T firstTrade, List<T> allTrades, RequestSignificance sig, SocketUser trader, int totalBatchTrades)
+    public static async Task AddBatchContainerToQueueAsync(SocketCommandContext context, int code, string trainer, T firstTrade, List<T> allTrades, RequestSignificance sig, SocketUser trader, int totalBatchTrades, bool ignoreAutoOT = false)
     {
         var userID = trader.Id;
         var name = trader.Username;
@@ -408,8 +408,10 @@ public static class QueueHelper<T> where T : PKM, new()
 
         int uniqueTradeID = GenerateUniqueTradeID();
 
+        // ignoreAutoOT flows through so a batch that explicitly asked for an OT/TID/SID keeps it,
+        // exactly like a single trade does. Without it AutoOT silently overwrites the requested OT.
         var detail = new PokeTradeDetail<T>(firstTrade, trainer_info, notifier, PokeTradeType.Batch, code,
-            sig == RequestSignificance.Favored, null, 1, totalBatchTrades, false)
+            sig == RequestSignificance.Favored, null, 1, totalBatchTrades, false, ignoreAutoOT: ignoreAutoOT)
         {
             BatchTrades = allTrades
         };
