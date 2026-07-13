@@ -2014,6 +2014,41 @@ public static class Helpers<T> where T : PKM, new()
                 isPreMadeBypass = true;
         }
 
+        // ── Requested level too low for the encounter: correct it instead of rejecting ──
+        // A level below the encounter's minimum (e.g. "Level: 10" on an Alpha Dratini whose
+        // encounter starts at 38) makes generation fail, and ALM reports it as a MOVE problem
+        // ("<species> cannot learn those moves in this game!") — which sends members hunting the
+        // wrong thing entirely. Retry once with the level stripped so ALM uses the encounter's
+        // natural level, clamp to the lowest legal level for the set (Alpha status, marks, moves
+        // and everything else preserved), and tell them what changed. This only runs when
+        // generation ALREADY failed, so it can never alter a trade that was going to succeed.
+        if (reqLevel > 0 && (pkm is not T || !la.Valid) && !isPreMadeBypass)
+        {
+            try
+            {
+                var noLevelText = string.Join("\n", contentWithoutLanguage.Split('\n')
+                    .Where(l => !l.TrimStart().StartsWith("Level:", StringComparison.OrdinalIgnoreCase)));
+                var retryPkm = sav.GetLegalForTrade(AutoLegalityWrapper.GetTemplate(new ShowdownSet(noLevelText)), out _);
+                if (retryPkm is T && retryPkm.Species == template.Species && new LegalityAnalysis(retryPkm).Valid)
+                {
+                    var finalLvl = ApplyLowestLegalLevel(retryPkm, reqLevel);
+                    var retryLa = new LegalityAnalysis(retryPkm);
+                    if (retryLa.Valid)
+                    {
+                        if (finalLvl > reqLevel)
+                            levelAdjustNote = $"**Level {reqLevel}** isn't possible for this {spec} — it was corrected to **Level {finalLvl}**, the lowest legal level for this set.";
+                        pkm = retryPkm;
+                        la = retryLa;
+                        LogUtil.LogInfo($"[TradeModule] Level auto-correct: {spec} requested Level {reqLevel} -> shipped Level {finalLvl}", "Helpers");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtil.LogError($"[TradeModule] Level auto-correct failed: {ex.Message}", "Helpers");
+            }
+        }
+
         if (pkm is not T pk || (!la.Valid && !isPreMadeBypass))
         {
             // Diagnostic: log specific legality failure reasons
