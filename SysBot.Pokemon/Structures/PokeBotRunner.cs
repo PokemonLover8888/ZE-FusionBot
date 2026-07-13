@@ -107,6 +107,10 @@ public abstract class PokeBotRunner<T> : RecoverableBotRunner<PokeBotState>, IPo
 
         AutoLegalityWrapper.EnsureInitialized(Hub.Config.Legality);
 
+        // Trades silently get all suggested relearn moves unless the user asked otherwise.
+        SysBot.Pokemon.Discord.Helpers.BatchCommandNormalizer.ApplyRelearnMovesByDefault =
+            Hub.Config.Trade.TradeConfiguration.SuggestRelearnMoves;
+
         // Initialize recovery service with settings from config
         InitializeRecoveryService();
 

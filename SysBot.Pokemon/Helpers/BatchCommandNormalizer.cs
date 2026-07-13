@@ -17,6 +17,16 @@ namespace SysBot.Pokemon.Discord.Helpers
         // RNG for all handlers (avoid creating new ones in loops)
         private static readonly Random Rng = new();
 
+        /// <summary>
+        /// When true, every trade silently gets <c>.RelearnMoves=$suggestAll</c> so Pokemon arrive
+        /// with their full relearn-move pool without the user typing the batch command. Only added
+        /// when the user did not specify RelearnMoves themselves, so explicit requests still win.
+        /// $suggestAll applies only the moves the legality check itself suggests, so it is a no-op
+        /// for encounters that legally have no relearn moves.
+        /// Wired from TradeSettings.SuggestRelearnMoves at bot startup (PokeBotRunner).
+        /// </summary>
+        public static bool ApplyRelearnMovesByDefault { get; set; } = true;
+
         //////////////////////////////////// ALIAS & COMMAND MAPPINGS //////////////////////////////////////
 
         // Maps common aliases to their normalized command keys
@@ -345,6 +355,16 @@ namespace SysBot.Pokemon.Discord.Helpers
                 {
                     processed.Add($"{key}: {value}");
                 }
+            }
+
+            // Give every trade its full legal relearn-move pool without the user typing the batch
+            // command. Skipped when the user already spoke for RelearnMoves (including asking for
+            // none), so an explicit request always wins over this default.
+            if (ApplyRelearnMovesByDefault && !processed.Any(l =>
+                    l.StartsWith(".RelearnMoves=", StringComparison.OrdinalIgnoreCase) ||
+                    l.StartsWith("Relearn Moves:", StringComparison.OrdinalIgnoreCase)))
+            {
+                processed.Add(".RelearnMoves=$suggestAll");
             }
 
             // Always return at the end
