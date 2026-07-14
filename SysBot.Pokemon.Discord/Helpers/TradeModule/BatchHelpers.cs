@@ -137,35 +137,20 @@ public static class BatchHelpers<T> where T : PKM, new()
                     }
                 }
 
-                // -----------------------------
-                // Apply Nature enforcement for non-ZA games
-                // For non-ZA games, manually set Nature if it doesn't match
-                // -----------------------------
-                if (pk.Version != GameVersion.ZA)
-                {
-                    // For non-ZA games, check if the generated Nature matches the requested Nature
-                    // If not, manually set it (no PID rerolling needed for non-ZA)
-                    if (set.Nature != Nature.Random && pk.Nature != set.Nature)
-                    {
-                        // Check if user explicitly set Stat Nature
-                        bool hasExplicitStatNature = pk.StatNature != pk.Nature;
-                        Nature explicitStatNature = hasExplicitStatNature ? pk.StatNature : Nature.Random;
-
-                        pk.Nature = set.Nature;
-
-                        // Preserve explicit Stat Nature if user set it, otherwise match the nature
-                        if (hasExplicitStatNature)
-                        {
-                            pk.StatNature = explicitStatNature;
-                        }
-                        else
-                        {
-                            pk.StatNature = set.Nature;
-                        }
-
-                        pk.RefreshChecksum();
-                    }
-                }
+                // Nature for non-ZA games is deliberately NOT touched here.
+                //
+                // There used to be a block that did `pk.Nature = set.Nature` whenever the generated
+                // nature differed from the requested one, with no legality check. That destroyed
+                // nature-locked encounters: ALM correctly returns Bloodmoon Ursaluna as
+                // Nature=Hardy/StatNature=Modest (a legal mint), this saw "Hardy != Modest" and
+                // stamped Modest onto the ACTUAL Nature — making the mon illegal and voiding its
+                // HOME tracker, so HOME refused the deposit. Its "did the user ask for a StatNature?"
+                // probe (pk.StatNature != pk.Nature) was self-defeating too: that is precisely the
+                // signature of a legitimately minted encounter, not of a user request.
+                //
+                // ProcessShowdownSetAsync (called above) already applies the requested nature and
+                // falls back to minting when PKHeX says the actual nature is illegal for the
+                // encounter. Batch trades get that for free; re-applying it here only broke it.
 
                 // -----------------------------
                 // Apply IVs, HyperTraining, Nature, Shiny for ZA games

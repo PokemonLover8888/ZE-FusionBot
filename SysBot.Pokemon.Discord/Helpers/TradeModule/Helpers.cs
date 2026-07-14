@@ -1032,25 +1032,17 @@ public static class Helpers<T> where T : PKM, new()
                                             pkm = preMade;
                                             result = "PreMadeFile";
 
-                                            // HOME ANTI-CLONE: transfer-origin mons (GO/Gen-3 Deoxys, Mew, etc.) carry a
-                                            // HOME tracker so they pass legality. But HOME rejects a DUPLICATE tracker as a
-                                            // clone — if the bot shipped the same tracker to many members, only the FIRST
-                                            // could deposit to HOME. HOME's check is duplicate-detection, not issuance, so
-                                            // stamping a FRESH RANDOM tracker on every trade makes each member's copy unique
-                                            // → every member can deposit to their own HOME. Any non-zero tracker stays legal
-                                            // (verified by probe). Guarded to files that ALREADY have a tracker: native /
-                                            // trackerless files are left alone (HOME assigns their real tracker on deposit),
-                                            // so a native mon never illegally gains one.
-                                            if (preMade is IHomeTrack homeTrk && homeTrk.HasTracker)
-                                            {
-                                                Span<byte> trkBytes = stackalloc byte[8];
-                                                System.Security.Cryptography.RandomNumberGenerator.Fill(trkBytes);
-                                                ulong freshTracker = BitConverter.ToUInt64(trkBytes);
-                                                if (freshTracker == 0) freshTracker = 0x1_0000_0001UL; // 0 == trackerless; never emit it
-                                                homeTrk.Tracker = freshTracker;
-                                                preMade.RefreshChecksum();
-                                                LogUtil.LogInfo($"[TradeModule] Pre-made {preMade.Species}: stamped fresh unique HOME tracker (anti-clone; each member can HOME-deposit)", "Helpers");
-                                            }
+                                            // DO NOT fabricate a HOME tracker here. A pre-made/event file's tracker is a
+                                            // REAL one that HOME itself issued, and it is the only reason the file is
+                                            // accepted on deposit. The previous "anti-clone" code overwrote it with a
+                                            // random value on every trade, on the premise that HOME only checks for
+                                            // DUPLICATE trackers. That premise is wrong: HOME checks ISSUANCE — it asks
+                                            // whether it ever handed that tracker out — so an invented value is a forgery
+                                            // and every copy is rejected ("didn't go to HOME"). It passed a local "probe"
+                                            // only because PKHeX cannot query HOME's servers; PKHeX legality != HOME
+                                            // acceptance. Net effect was strictly worse than the problem it tried to
+                                            // solve: instead of only the first member being able to deposit, NOBODY could.
+                                            // Leave the real tracker exactly as-is.
                                             string note;
                                             if (preMadeLa.Valid) note = "";
                                             else if (isHomeWondercardMismatch) note = " (HOME wondercard, PKHeX too old to validate — shipping anyway)";
@@ -2111,7 +2103,14 @@ public static class Helpers<T> where T : PKM, new()
         //            → Nature=PKHeX default, StatNature=X (already set by ALM)
         // Example 4: Nothing requested → ALM picks, no change.
         // ============================================================================
-        if (pk is PA9)
+        // Applies to Z-A (PA9) AND Scarlet/Violet (PK9). This check is game-agnostic — it does not
+        // use a per-game table; it clones the mon, applies the requested nature and simply ASKS
+        // PKHeX whether that is legal, minting instead when it isn't. SV was previously excluded,
+        // so a fixed-nature SV encounter (e.g. Bloodmoon Ursaluna, which can only be Hardy) had the
+        // requested nature written onto its ACTUAL Nature. That makes the mon illegal, which in turn
+        // invalidates an event file / HOME tracker — the member's Pokemon is then rejected by HOME.
+        // Minting (StatNature) shows the requested nature in-game while keeping the mon legal.
+        if (pk is PA9 or PK9)
         {
             // Nature.Random (25) means the user did not specify a nature in the set.
             Nature requestedNature = set.Nature;
@@ -2139,11 +2138,34 @@ public static class Helpers<T> where T : PKM, new()
             bool hasExplicitStatNature = userExplicitStatNature.HasValue;
             Nature userStatNature = userExplicitStatNature ?? Nature.Random;
 
+            // Some encounters lock the nature outright (Bloodmoon Ursaluna is always Hardy, Eternatus
+            // is always Timid, etc.). Generation can still write the requested nature onto the ACTUAL
+            // Nature, which makes the mon illegal and voids its HOME tracker — HOME then refuses the
+            // deposit. Ask PKHeX what the matched encounter locks the nature to and, when it disagrees
+            // with what we hold, restore it and demote the user's request to a mint (StatNature).
+            if (userRequestedNature)
+            {
+                var encounter = new LegalityAnalysis(pk).Info.EncounterMatch;
+                if (encounter is IFixedNature { Nature: var lockedNature }
+                    && lockedNature != Nature.Random
+                    && lockedNature != pk.Nature)
+                {
+                    var mintedTo = hasExplicitStatNature ? userStatNature : requestedNature;
+                    LogUtil.LogInfo(
+                        $"{(Species)pk.Species}: Encounter locks Nature to {lockedNature} but generation produced " +
+                        $"{pk.Nature}. Restoring {lockedNature} and minting StatNature={mintedTo}.",
+                        "NatureLegality");
+                    pk.Nature = lockedNature;
+                    pk.StatNature = mintedTo;
+                    pk.RefreshChecksum();
+                }
+            }
+
             if (userRequestedNature && requestedNature != pk.Nature)
             {
                 // The encounter forced a different nature than what the user requested.
                 // Test whether the user's requested nature is legal for this encounter.
-                var clone = (PA9)pk.Clone();
+                var clone = (T)pk.Clone();
                 clone.Nature = requestedNature;
                 clone.StatNature = hasExplicitStatNature ? userStatNature : requestedNature;
                 clone.RefreshChecksum();
@@ -2156,7 +2178,7 @@ public static class Helpers<T> where T : PKM, new()
                     pk.RefreshChecksum();
                     LogUtil.LogInfo(
                         $"{(Species)pk.Species}: Requested nature {requestedNature} is legal — applied.",
-                        "ZANature");
+                        "NatureLegality");
                 }
                 else
                 {
@@ -2166,7 +2188,7 @@ public static class Helpers<T> where T : PKM, new()
                     // HOME-converted WC8 events) restrict StatNature via shiny/nature correlation checks
                     // and will also reject a mismatched StatNature.
                     var wantedStatNature = hasExplicitStatNature ? userStatNature : requestedNature;
-                    var cloneMint = (PA9)pk.Clone();
+                    var cloneMint = (T)pk.Clone();
                     cloneMint.StatNature = wantedStatNature;
                     cloneMint.RefreshChecksum();
 
@@ -2178,7 +2200,7 @@ public static class Helpers<T> where T : PKM, new()
                         LogUtil.LogInfo(
                             $"{(Species)pk.Species}: Requested nature {requestedNature} is illegal for this encounter. " +
                             $"Mint applied: Nature={pk.Nature}, StatNature={pk.StatNature}.",
-                            "ZANature");
+                            "NatureLegality");
                     }
                     else
                     {
@@ -2187,7 +2209,7 @@ public static class Helpers<T> where T : PKM, new()
                         LogUtil.LogInfo(
                             $"{(Species)pk.Species}: Requested nature {requestedNature} is illegal and minting is " +
                             $"restricted for this encounter. Keeping forced Nature={pk.Nature}, StatNature={pk.StatNature}.",
-                            "ZANature");
+                            "NatureLegality");
                     }
                 }
             }
@@ -2204,7 +2226,7 @@ public static class Helpers<T> where T : PKM, new()
             // Else: no nature was requested — leave Nature and StatNature exactly as ALM set them.
         }
         // ============================================================================
-        // END OF ZA NATURE LEGALITY ENFORCEMENT
+        // END OF NATURE LEGALITY ENFORCEMENT
         // ============================================================================
 
         // Final preparation — use effectiveLanguage so the FIXED-OT FALLBACK's language
