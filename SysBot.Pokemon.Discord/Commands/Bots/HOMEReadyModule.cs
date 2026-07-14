@@ -93,6 +93,23 @@ namespace SysBot.Pokemon.Discord.Modules
         [Alias("hrr", "lr")]
         [Summary("Downloads a HOME-ready PKM and queues it for trade. `lr` short alias = 'legendary request'.")]
         [RequireQueueRole(nameof(DiscordManager.RolesClone))]
+        /// <summary>
+        /// Maps a HOME-Ready file's extension to its entity context. Required because several PKM
+        /// formats share a byte length (.pb8 and .pk8 are both 344), so PKHeX cannot tell them apart
+        /// from the bytes alone and will guess wrong.
+        /// </summary>
+        private static EntityContext? GetContextForExtension(string path) =>
+            Path.GetExtension(path).ToLowerInvariant() switch
+            {
+                ".pb8" => EntityContext.Gen8b,
+                ".pk8" => EntityContext.Gen8,
+                ".pa8" => EntityContext.Gen8a,
+                ".pk9" => EntityContext.Gen9,
+                ".pa9" => EntityContext.Gen9a,
+                ".pb7" => EntityContext.Gen7b,
+                _ => null,
+            };
+
         private async Task HOMEReadyRequestAsync(int index)
         {
             if (string.IsNullOrWhiteSpace(HOMEFolder))
@@ -128,7 +145,13 @@ namespace SysBot.Pokemon.Discord.Modules
 
                 var filePath = files[index - 1];
                 var data = await File.ReadAllBytesAsync(filePath);
-                var entity = EntityFormat.GetFromBytes(data);
+
+                // .pb8 (BDSP) and .pk8 (SwSh) are both 344 bytes — without an explicit context PKHeX
+                // guesses PK8 and silently misreads every BDSP file, producing a mon with bogus moves,
+                // ability and met data. The file extension is the only thing that can disambiguate.
+                var entity = GetContextForExtension(filePath) is { } ctx
+                    ? EntityFormat.GetFromBytes(data, ctx)
+                    : EntityFormat.GetFromBytes(data);
 
                 if (entity == null)
                 {
@@ -377,7 +400,10 @@ namespace SysBot.Pokemon.Discord.Modules
                 var filePath = files[index - 1];
                 var raw = await File.ReadAllBytesAsync(filePath);
 
-                var entity = EntityFormat.GetFromBytes(raw);
+                // Same as the request path: the extension is what tells .pb8 apart from .pk8.
+                var entity = GetContextForExtension(filePath) is { } viewCtx
+                    ? EntityFormat.GetFromBytes(raw, viewCtx)
+                    : EntityFormat.GetFromBytes(raw);
                 if (entity == null)
                 {
                     await ReplyAsync("Could not read the PKM file.").ConfigureAwait(false);
