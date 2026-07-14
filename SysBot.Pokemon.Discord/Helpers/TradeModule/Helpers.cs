@@ -2398,16 +2398,38 @@ public static class Helpers<T> where T : PKM, new()
         // that. The ONLY exceptions: pre-made DB files (result == "PreMadeFile") and
         // anything carrying a real HOME tracker (mythicals get one added earlier) —
         // those are HOME-legal cross-origin mons and still ship normally.
-        if (typeof(T) == typeof(PK9) && isNonNative && result != "PreMadeFile"
-            && !(pk is IHomeTrack svTrk && svTrk.HasTracker))
+        // ── EVERY GAME: DECLINE a non-native, tracker-less encounter, and say which bot to ask ──
+        // HOME gives a Pokémon its tracker on its first upload from the game it was BORN in. If we ship
+        // one whose origin game isn't this bot's game and it has no tracker, HOME refuses the deposit
+        // (2-ALZTA-0005 / 10015) — e.g. Eternatus is a Sword/Shield event, so an SV bot cannot make a
+        // HOME-acceptable one no matter what we do, while a SwSh bot can, every time.
+        //
+        // This previously only guarded SV and Z-A; SwSh, BDSP, PLA and LGPE would silently ship a
+        // Pokémon HOME would reject. Now every game is covered, and instead of a vague "try another
+        // bot" we name the exact bot that CAN make it — or send them to the archive if no bot runs its
+        // origin game at all (Pokémon GO, old-gen events).
+        //
+        // Exceptions, unchanged: pre-made DB files, and anything already carrying a real HOME tracker.
+        if (isNonNative && result != "PreMadeFile"
+            && !(pk is IHomeTrack trk && trk.HasTracker)
+            && !HomeOriginAdvisor.IsNativeToBot(pk))
         {
             var spcName = GameInfo.Strings.Species[template.Species];
-            LogUtil.LogInfo($"[TradeModule] SV declined {spcName}: no native S/V encounter and the non-native fallback has no HOME tracker", "Helpers");
+            var thisGame = HomeOriginAdvisor.DescribeVersion(
+                pk switch
+                {
+                    PK9 => GameVersion.SL, PK8 => GameVersion.SW, PB8 => GameVersion.BD,
+                    PA8 => GameVersion.PLA, PA9 => GameVersion.ZA, PB7 => GameVersion.GP,
+                    _ => pk.Version,
+                });
+
+            LogUtil.LogInfo(
+                $"[TradeModule] {thisGame} declined {spcName}: origin is {pk.Version}, no HOME tracker — " +
+                $"HOME would reject it. Redirecting the member to the right bot.", "Helpers");
+
             return Task.FromResult(new ProcessedPokemonResult<T>
             {
-                Error = $"**No valid Scarlet/Violet encounter found for {spcName}.**\n" +
-                        "This Pokémon can't be legally generated in Scarlet/Violet, and borrowing an encounter from another game without a HOME tracker would be illegal (HOME flags it as hacked).\n\n" +
-                        "The request was declined instead of sending an illegal Pokémon. Please request a Pokémon that's obtainable in Scarlet/Violet, or get this exact Pokémon from the matching game's bot (e.g. **SwSh**) so it can transfer up with a valid HOME tracker.",
+                Error = HomeOriginAdvisor.BuildDeclineMessage(pk, spcName, thisGame),
                 ShowdownSet = set
             });
         }
