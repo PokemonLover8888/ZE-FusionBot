@@ -8,7 +8,10 @@ namespace SysBot.Pokemon
 {
     public class ShowdownTranslator<T> where T : PKM
     {
-        public static GameStrings GameStringsZh = GameInfo.GetStrings("zh");
+        // PKHeX renamed the Chinese language codes: "zh" now silently falls back to English
+        // (species lookups return 0, breaking Chinese trade requests). Simplified Chinese is
+        // "zh-Hans" (Traditional is "zh-Hant"). Use Simplified — matches the translator's dictionaries.
+        public static GameStrings GameStringsZh = GameInfo.GetStrings("zh-Hans");
         public static GameStrings GameStringsEn = GameInfo.GetStrings("en");
         public static string Chinese2Showdown(string zh)
         {
