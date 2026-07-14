@@ -2229,6 +2229,54 @@ public static class Helpers<T> where T : PKM, new()
         // END OF NATURE LEGALITY ENFORCEMENT
         // ============================================================================
 
+        // ============================================================================
+        // EVENT OT SCRIPT / LANGUAGE MATCH
+        // ============================================================================
+        // Some events only ever existed in one region, so their fixed OT is Korean or Japanese
+        // text. A shiny Diancie, for instance, was only ever distributed in Korea and Japan --
+        // its OT is genuinely '올스타'. Leaving such a mon on a Latin language gives us an
+        // English Pokemon carrying Korean text in its OT field, which nothing can render, so it
+        // displays as "???". Switch the mon to a language that can actually show its own OT.
+        //
+        // Only applied if PKHeX still says the result is legal -- if matching the language would
+        // break legality, we keep exactly what we had. Worst case is today's behaviour, never worse.
+        // ============================================================================
+        var eventOt = pk.OriginalTrainerName;
+        if (!string.IsNullOrEmpty(eventOt)
+            && IsLatinLanguage(pk.Language)
+            && eventOt.Length <= 6                       // PrepareForTrade replaces >6-char OTs on Asian languages
+            && GetLanguagesForScript(eventOt) is { Length: > 0 } scriptLanguages)
+        {
+            foreach (var candidate in scriptLanguages)
+            {
+                var probe = (T)pk.Clone();
+                probe.Language = (byte)candidate;
+                probe.SetDefaultNickname(new LegalityAnalysis(probe));
+                probe.IsNicknamed = false;
+                probe.RefreshChecksum();
+
+                if (!new LegalityAnalysis(probe).Valid)
+                    continue;
+
+                LogUtil.LogInfo(
+                    $"{(Species)pk.Species}: OT '{eventOt}' cannot display on {(LanguageID)pk.Language}. " +
+                    $"Switching to {candidate} so the OT renders. Nickname={probe.Nickname}.",
+                    "EventOTLanguage");
+
+                pk = probe;
+                effectiveLanguage = (byte)candidate;
+
+                var note = $"This **{(Species)pk.Species}** only exists as a **{candidate}** event, so its OT is " +
+                           $"**{eventOt}** and its nickname is in {candidate}. That's correct — it's the only legal " +
+                           $"version — and it will still go into HOME.";
+                levelAdjustNote = string.IsNullOrEmpty(levelAdjustNote) ? note : $"{levelAdjustNote}\n{note}";
+                break;
+            }
+        }
+        // ============================================================================
+        // END OF EVENT OT SCRIPT / LANGUAGE MATCH
+        // ============================================================================
+
         // Final preparation — use effectiveLanguage so the FIXED-OT FALLBACK's language
         // choice is not overwritten by finalLanguage here.
         LogUtil.LogInfo($"[LANGUAGE TRACE] Before PrepareForTrade: finalLanguage={finalLanguage}, effectiveLanguage={effectiveLanguage}, pk.Language={pk.Language}", "Helpers");
@@ -2382,6 +2430,39 @@ public static class Helpers<T> where T : PKM, new()
             _ when pkm.HeldItem == 0 && !pkm.IsEgg => (int)SysCord<T>.Runner.Config.Trade.TradeConfiguration.DefaultHeldItem,
             _ => pkm.HeldItem
         };
+    }
+
+    /// <summary>
+    /// Languages that use the Latin alphabet and therefore cannot render Korean/Japanese/Chinese OT text.
+    /// </summary>
+    private static bool IsLatinLanguage(int language) => language is
+        (int)LanguageID.English or (int)LanguageID.French or (int)LanguageID.Italian or
+        (int)LanguageID.German or (int)LanguageID.Spanish;
+
+    /// <summary>
+    /// Given OT text, returns the language(s) that can display it, best guess first.
+    /// Empty if the text is plain Latin and needs no language change.
+    /// </summary>
+    private static LanguageID[] GetLanguagesForScript(string text)
+    {
+        bool hangul = false, kana = false, han = false;
+        foreach (var c in text)
+        {
+            if (c is >= '가' and <= '힯' or >= 'ᄀ' and <= 'ᇿ' or >= '㄰' and <= '㆏')
+                hangul = true;
+            else if (c is >= '぀' and <= 'ヿ')
+                kana = true;
+            else if (c is >= '一' and <= '鿿')
+                han = true;   // shared by Japanese and Chinese — try each and let PKHeX decide
+        }
+
+        if (hangul)
+            return [LanguageID.Korean];
+        if (kana)
+            return [LanguageID.Japanese];
+        if (han)
+            return [LanguageID.Japanese, LanguageID.ChineseS, LanguageID.ChineseT];
+        return [];
     }
 
     public static void PrepareForTrade(T pk, ShowdownSet set, byte finalLanguage)
