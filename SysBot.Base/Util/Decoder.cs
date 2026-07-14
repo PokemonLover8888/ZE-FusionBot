@@ -22,7 +22,12 @@ public static class Decoder
 
     public static ReadOnlySpan<byte> ConvertHexByteStringToBytes(ReadOnlySpan<byte> raw)
     {
-        throw new NotImplementedException();
+        // Same decode as the byte[] overload (2 hex chars -> 1 byte), but without copying the
+        // input into a byte[] first. Used by wireless FlexRead (screenshot data). Was a
+        // NotImplementedException stub, so any span-based caller / DecodeTest threw at runtime.
+        var dest = new byte[raw.Length / 2];
+        LoadHexBytesTo(raw, dest, 2);
+        return dest;
     }
 
     public static void LoadHexBytesTo(ReadOnlySpan<byte> str, Span<byte> dest, int tupleSize)
