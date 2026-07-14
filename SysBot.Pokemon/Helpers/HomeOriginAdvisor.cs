@@ -1,6 +1,6 @@
 using PKHeX.Core;
 
-namespace SysBot.Pokemon.Discord.Helpers;
+namespace SysBot.Pokemon.Helpers;
 
 /// <summary>
 /// Works out which bot a member should have asked, when the one they asked cannot produce a
