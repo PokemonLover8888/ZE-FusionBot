@@ -5,23 +5,14 @@ namespace SysBot.Pokemon;
 
 public static class StringsUtil
 {
-    private static readonly char[] Blacklist = ['.', '\\', '/', ',', '*', ';', '．', '・', '。'];
-
-    private static readonly string[] TLD = ["tv", "gg", "yt"];
-
-    private static readonly string[] TLD2 = ["com", "org", "net"];
-
     /// <summary>
-    /// Checks the input <see cref="text"/> to see if it is selfish spam.
+    /// Historically flagged "selfish spam" names (ad/channel/URL-style). Now intentionally a no-op:
+    /// spam-name blocking is disabled so members can use any OT/nickname. The old Blacklist/TLD
+    /// heuristics were removed with it — they were false-positive-prone (blocked legit names).
     /// </summary>
     /// <param name="text">String to check</param>
-    /// <returns>True if spam, false if natural.</returns>
-    public static bool IsSpammyString(string text)
-    {
-        // No longer checks the content of the string.
-        // This allows any name to be used.
-        return false;
-    }
+    /// <returns>Always false (spam-name blocking disabled).</returns>
+    public static bool IsSpammyString(string text) => false;
 
     /// <summary>
     /// Remove all non-alphanumeric characters, convert wide chars to narrow, and converts the final string to lowercase.

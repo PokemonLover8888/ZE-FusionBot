@@ -18,10 +18,12 @@ public class StringTests
     }
 
     [Theory]
+    // Spam-name blocking is intentionally disabled (IsSpammyString always returns false) so members
+    // can use any OT/nickname. These formerly-"spammy" names are now allowed — expected: false.
     [InlineData("Anubis", false)]
     [InlineData("Kurt", false)]
-    [InlineData("NzHateTV", true)]
-    [InlineData("tvOakSlab", true)]
+    [InlineData("NzHateTV", false)]
+    [InlineData("tvOakSlab", false)]
     public void TestSpammy(string input, bool state)
     {
         var result = StringsUtil.IsSpammyString(input);
