@@ -1031,6 +1031,26 @@ public static class Helpers<T> where T : PKM, new()
                                         {
                                             pkm = preMade;
                                             result = "PreMadeFile";
+
+                                            // HOME ANTI-CLONE: transfer-origin mons (GO/Gen-3 Deoxys, Mew, etc.) carry a
+                                            // HOME tracker so they pass legality. But HOME rejects a DUPLICATE tracker as a
+                                            // clone — if the bot shipped the same tracker to many members, only the FIRST
+                                            // could deposit to HOME. HOME's check is duplicate-detection, not issuance, so
+                                            // stamping a FRESH RANDOM tracker on every trade makes each member's copy unique
+                                            // → every member can deposit to their own HOME. Any non-zero tracker stays legal
+                                            // (verified by probe). Guarded to files that ALREADY have a tracker: native /
+                                            // trackerless files are left alone (HOME assigns their real tracker on deposit),
+                                            // so a native mon never illegally gains one.
+                                            if (preMade is IHomeTrack homeTrk && homeTrk.HasTracker)
+                                            {
+                                                Span<byte> trkBytes = stackalloc byte[8];
+                                                System.Security.Cryptography.RandomNumberGenerator.Fill(trkBytes);
+                                                ulong freshTracker = BitConverter.ToUInt64(trkBytes);
+                                                if (freshTracker == 0) freshTracker = 0x1_0000_0001UL; // 0 == trackerless; never emit it
+                                                homeTrk.Tracker = freshTracker;
+                                                preMade.RefreshChecksum();
+                                                LogUtil.LogInfo($"[TradeModule] Pre-made {preMade.Species}: stamped fresh unique HOME tracker (anti-clone; each member can HOME-deposit)", "Helpers");
+                                            }
                                             string note;
                                             if (preMadeLa.Valid) note = "";
                                             else if (isHomeWondercardMismatch) note = " (HOME wondercard, PKHeX too old to validate — shipping anyway)";

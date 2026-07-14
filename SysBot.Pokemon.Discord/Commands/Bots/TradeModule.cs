@@ -992,11 +992,14 @@ public partial class TradeModule<T> : ModuleBase<SocketCommandContext> where T :
                 }
                 if (batchPokemonList.Count > 0)
                 {
-                    // A batch is a single queue entry with one AutoOT flag, so this is all-or-nothing:
-                    // if ANY set in the batch explicitly asked for an OT/TID/SID, honor custom trainer
-                    // info for the whole batch rather than letting AutoOT silently overwrite it. Matches
-                    // the rule single trades already use.
-                    bool batchIgnoreAutoOT = trades.Any(t =>
+                    // A batch is a single queue entry with ONE AutoOT flag, so this is all-or-nothing.
+                    // Require EVERY set to ask for trainer info before we disable AutoOT for the batch.
+                    // Using "any" here was wrong: a mixed batch (e.g. an OT-less Ursaluna alongside an
+                    // "OT: Test1" mon) turned AutoOT off for BOTH, so the Ursaluna shipped with the bot's
+                    // own generated OT ("Ash") instead of the member's. Requiring "all" means a mixed
+                    // batch keeps AutoOT (every mon gets the member's OT, as before), while a batch that
+                    // uniformly asks for an OT still honors it — which is the case people actually want.
+                    bool batchIgnoreAutoOT = trades.All(t =>
                         t.Contains("OT:") || t.Contains("TID:") || t.Contains("SID:"));
 
                     await BatchHelpers<T>.ProcessBatchContainer(Context, batchPokemonList, batchTradeCode, trades.Count, batchIgnoreAutoOT);
