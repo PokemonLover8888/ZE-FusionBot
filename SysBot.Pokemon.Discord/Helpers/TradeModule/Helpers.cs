@@ -1951,6 +1951,32 @@ public static class Helpers<T> where T : PKM, new()
             catch (Exception ex) { LogUtil.LogError($"[TradeModule] BDSP native safety net failed: {ex.Message}", "Helpers"); }
         }
 
+        // SwSh native safety net (same mechanism as BDSP/SV/Z-A). Crown Tundra Max Lair /
+        // Dynamax Adventure legendaries (Giratina, the creation & lake trios, weather trio,
+        // birds/beasts, etc.) ARE catchable natively in SwSh and CAN be shiny
+        // (EncounterStatic8U, met loc 244, shiny=Random) — but the threaded native-first path
+        // can still leak a transfer/GO encounter → Non-Native + HOME tracker, which blocks
+        // AutoOT (the member gets the host's OT instead of their own). Rebuild via the direct
+        // NativeOnly path. SwSh bots run v26.5.6.0 which enforces shiny-locks, so
+        // GetLegalNativeDirect's internal la.Valid rejects an illegal native shiny (a genuinely
+        // shiny-locked legendary) and the transfer is kept — safe for BOTH shiny and non-shiny.
+        if (typeof(T) == typeof(PK8)
+            && pkm is PK8 swshNonNative && swshNonNative.Species == template.Species
+            && new LegalityAnalysis(swshNonNative).EncounterOriginal.Context != swshNonNative.Context)
+        {
+            try
+            {
+                var directSw = sav.GetLegalNativeDirect(template);
+                if (directSw is PK8 swNative)
+                {
+                    pkm = swNative;
+                    la = new LegalityAnalysis(pkm);
+                    LogUtil.LogInfo($"[TradeModule] SwSh native safety net: rebuilt {pkm.Species} natively via direct path (was Non-Native), valid={la.Valid}", "Helpers");
+                }
+            }
+            catch (Exception ex) { LogUtil.LogError($"[TradeModule] SwSh native safety net failed: {ex.Message}", "Helpers"); }
+        }
+
         if (!la.Valid && pkm is PA9 && !isZAWildLegendary && !nativeZAShiny)
         {
             var fallback = TryGetAsHomePa9(template, spec);
