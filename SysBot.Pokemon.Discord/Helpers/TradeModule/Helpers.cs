@@ -1969,9 +1969,22 @@ public static class Helpers<T> where T : PKM, new()
                 var directSw = sav.GetLegalNativeDirect(template);
                 if (directSw is PK8 swNative)
                 {
+                    // Max Lair (EncounterStatic8U) guarantees only 4 flawless IVs, so ALM under-fills
+                    // and produces a 4-perfect mon even when 6IV was requested — but 6x31 IS legal for
+                    // this encounter (the 2 non-guaranteed IVs simply rolled 31). Copy the member's
+                    // requested IVs from the non-native build we're replacing (which already reflects
+                    // their request, e.g. 6IV) and keep them only if the native mon stays legal;
+                    // otherwise fall back to ALM's native spread. This avoids trading their 6IV for
+                    // native — they get native, AutoOT, AND their IVs.
+                    var wantIvs = new int[6]; swshNonNative.GetIVs(wantIvs);
+                    var nativeIvs = new int[6]; swNative.GetIVs(nativeIvs);
+                    swNative.SetIVs(wantIvs);
+                    swNative.RefreshChecksum();
+                    if (!new LegalityAnalysis(swNative).Valid) { swNative.SetIVs(nativeIvs); swNative.RefreshChecksum(); }
+
                     pkm = swNative;
                     la = new LegalityAnalysis(pkm);
-                    LogUtil.LogInfo($"[TradeModule] SwSh native safety net: rebuilt {pkm.Species} natively via direct path (was Non-Native), valid={la.Valid}", "Helpers");
+                    LogUtil.LogInfo($"[TradeModule] SwSh native safety net: rebuilt {pkm.Species} natively (was Non-Native), IVs={pkm.IV_HP}/{pkm.IV_ATK}/{pkm.IV_DEF}/{pkm.IV_SPA}/{pkm.IV_SPD}/{pkm.IV_SPE}, valid={la.Valid}", "Helpers");
                 }
             }
             catch (Exception ex) { LogUtil.LogError($"[TradeModule] SwSh native safety net failed: {ex.Message}", "Helpers"); }
