@@ -1784,6 +1784,34 @@ public class PokeTradeBotSWSH(PokeTradeHub<PK8> hub, PokeBotState config) : Poke
         var tradeswsh = new LegalityAnalysis(cln);
         var swshReport = tradeswsh.Report();
 
+        // If the manual shiny-PID recalc landed on an ILLEGAL PID/EC correlation, don't ship the
+        // broken mon (SwSh silently reverts an illegal offer to the host OT at trade time — the
+        // member ends up with the bot's OT even though the log says otherwise). First try PKHeX's
+        // canonical SetShiny(), which derives a valid shiny PID that satisfies the encounter for the
+        // NEW trainer, yielding a HOME-safe legal shiny with the partner's real OT.
+        if (!tradeswsh.Valid && toSend.IsShiny)
+        {
+            try
+            {
+                var reshiny = (PK8)cln.Clone();
+                CommonEdits.SetShiny(reshiny);
+                reshiny.RefreshChecksum();
+                var laReshiny = new LegalityAnalysis(reshiny);
+                if (laReshiny.Valid)
+                {
+                    Log("[AutoOT-SWSH Shiny] Manual PID recalc was illegal — SetShiny() produced a legal " +
+                        "shiny for the partner's OT. Using it (HOME-safe, OT persists through trade).");
+                    cln = reshiny;
+                    tradeswsh = laReshiny;
+                    swshReport = laReshiny.Report();
+                }
+            }
+            catch (Exception ex)
+            {
+                Log($"[AutoOT-SWSH Shiny] SetShiny fallback failed: {ex.Message}");
+            }
+        }
+
         // Shiny AutoOT bypass: changing the partner's TID/SID forces a PID recalc to keep the mon
         // shiny, which breaks a seed-locked encounter's PID/EC correlation. PKHeX flags
         // "PID+ correlation does not match", but the recalc'd PID is a VALID shiny PID for the new
