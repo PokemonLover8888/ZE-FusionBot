@@ -1784,6 +1784,32 @@ public class PokeTradeBotSWSH(PokeTradeHub<PK8> hub, PokeBotState config) : Poke
         var tradeswsh = new LegalityAnalysis(cln);
         var swshReport = tradeswsh.Report();
 
+        // Word-filter false positive: AutoOT applies the PARTNER'S GENUINE in-game OT (read live
+        // from their save during the trade). PKHeX's Nintendo Switch word filter can flag a real,
+        // game-accepted profile name — e.g. "Killer" trips pattern '^kill.*' — which would wrongly
+        // discard the member's OT and revert them to the host save's OT ("Sword."). The host already
+        // disables this filter globally (AutoLegalityWrapper), but if that hasn't taken effect at
+        // trade time, re-check with ONLY the word filter off: if the mon is then fully legal, the
+        // name was the sole issue. It's the member's real name, so ship it with their OT.
+        if (!tradeswsh.Valid)
+        {
+            var prevWordFilter = ParseSettings.Settings.WordFilter.CheckWordFilter;
+            if (prevWordFilter)
+            {
+                ParseSettings.Settings.WordFilter.CheckWordFilter = false;
+                var laNoWordFilter = new LegalityAnalysis(cln);
+                ParseSettings.Settings.WordFilter.CheckWordFilter = prevWordFilter;
+                if (laNoWordFilter.Valid)
+                {
+                    Log($"[AutoOT-SWSH] Partner OT '{trainerName}' tripped the Switch word filter but is " +
+                        $"otherwise fully legal — it's the member's real in-game name. Shipping with their OT " +
+                        $"(TID7={tidsid % 1_000_000} SID7={tidsid / 1_000_000}).");
+                    await SetBoxPokemon(cln, 0, 0, token, sav).ConfigureAwait(false);
+                    return cln;
+                }
+            }
+        }
+
         // If the manual shiny-PID recalc landed on an ILLEGAL PID/EC correlation, don't ship the
         // broken mon (SwSh silently reverts an illegal offer to the host OT at trade time — the
         // member ends up with the bot's OT even though the log says otherwise). First try PKHeX's
