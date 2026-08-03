@@ -110,6 +110,7 @@ public class PokeTradeBotPLZA(PokeTradeHub<PA9> Hub, PokeBotState Config) : Poke
 
     public override async Task MainLoop(CancellationToken token)
     {
+        TradeCodeStorage.SetDataDirectory(Config.DataFolder); // multi-tenant: isolate this bot's trade codes
         try
         {
             // Ensure cache is clean on startup

@@ -81,6 +81,7 @@ public class PokeTradeBotSV(PokeTradeHub<PK9> Hub, PokeBotState Config) : PokeRo
 
     public override async Task MainLoop(CancellationToken token)
     {
+        TradeCodeStorage.SetDataDirectory(Config.DataFolder); // multi-tenant: isolate this bot's trade codes
         try
         {
             Hub.Queues.Info.CleanStuckTrades();

@@ -60,6 +60,7 @@ public class PokeTradeBotLGPE(PokeTradeHub<PB7> Hub, PokeBotState Config) : Poke
 
     public override async Task MainLoop(CancellationToken token)
     {
+        TradeCodeStorage.SetDataDirectory(Config.DataFolder); // multi-tenant: isolate this bot's trade codes
         try
         {
             await InitializeHardware(Hub.Config.Trade, token).ConfigureAwait(false);

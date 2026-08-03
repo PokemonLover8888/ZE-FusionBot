@@ -9,6 +9,13 @@ namespace SysBot.Pokemon;
 [Serializable]
 public sealed class PokeBotState : BotState<PokeRoutineType, SwitchConnectionConfig>
 {
+    /// <summary>
+    /// Multi-tenant only: the bot's own folder, so per-bot files (trade codes) stay isolated when
+    /// several bots share one process. Null for normal single-bot processes. Not serialized.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string? DataFolder { get; set; }
+
     /// <inheritdoc/>
     public override void Initialize() => Resume();
 

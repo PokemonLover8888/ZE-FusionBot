@@ -6,7 +6,16 @@ using System.Text.Json;
 namespace SysBot.Pokemon;
 public class TradeCodeStorage
 {
-    private const string FileName = "tradecodes.json";
+    private const string DefaultFileName = "tradecodes.json";
+    // Multi-tenant: when several bots share a process, point each bot's trade-code storage at its
+    // OWN folder so they don't clobber one shared file. AsyncLocal is set per-bot at MainLoop start;
+    // when unset (a normal single-bot process) it falls back to the file in the working directory —
+    // i.e. the exact existing behavior, so separate WinForms bots are unaffected.
+    private static readonly System.Threading.AsyncLocal<string?> DataDir = new();
+    public static void SetDataDirectory(string? dir) => DataDir.Value = dir;
+    private static string FileName => string.IsNullOrEmpty(DataDir.Value)
+        ? DefaultFileName
+        : Path.Combine(DataDir.Value, DefaultFileName);
     private static readonly JsonSerializerOptions SerializerOptions = new()
     {
         PropertyNameCaseInsensitive = true,

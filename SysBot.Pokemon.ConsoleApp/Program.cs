@@ -51,7 +51,10 @@ public static class Program
                 try
                 {
                     var cfg = JsonSerializer.Deserialize<ProgramConfig>(File.ReadAllText(path)) ?? new ProgramConfig();
-                    var name = Path.GetFileName(Path.GetDirectoryName(Path.GetFullPath(path))!);
+                    var folder = Path.GetDirectoryName(Path.GetFullPath(path))!;
+                    var name = Path.GetFileName(folder);
+                    foreach (var b in cfg.Bots)
+                        b.DataFolder = folder; // per-bot trade-code isolation (files stay in the bot's own folder)
                     configs.Add((name, cfg));
                 }
                 catch (Exception ex)

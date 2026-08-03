@@ -63,6 +63,7 @@ public class PokeTradeBotSWSH(PokeTradeHub<PK8> hub, PokeBotState config) : Poke
 
     public override async Task MainLoop(CancellationToken token)
     {
+        TradeCodeStorage.SetDataDirectory(Config.DataFolder); // multi-tenant: isolate this bot's trade codes
         try
         {
             await InitializeHardware(hub.Config.Trade, token).ConfigureAwait(false);
