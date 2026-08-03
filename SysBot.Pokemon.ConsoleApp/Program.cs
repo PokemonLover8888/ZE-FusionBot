@@ -134,6 +134,15 @@ public static class BotContainer
         BatchCommandNormalizer.CurrentGameMode = configs[0].cfg.Mode;
         LogUtil.Forwarders.Add(ConsoleForwarder.Instance);
 
+        // A host must NEVER die silently. Log any unhandled failure so a crash leaves a trace.
+        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+            LogUtil.LogError($"[MultiTenant] UNHANDLED EXCEPTION (host terminating): {e.ExceptionObject}", "Host");
+        System.Threading.Tasks.TaskScheduler.UnobservedTaskException += (_, e) =>
+        {
+            LogUtil.LogError($"[MultiTenant] Unobserved task exception (swallowed): {e.Exception}", "Host");
+            e.SetObserved();
+        };
+
         var envs = new System.Collections.Generic.List<IPokeBotRunner>();
         foreach (var (name, prog) in configs)
         {
@@ -149,6 +158,10 @@ public static class BotContainer
                 }
                 env.StartAll();
                 envs.Add(env);
+                // Serve /api/bot/instances on this bot's own ControlPanelPort so the website's
+                // trade-bridge (polls each bot's fixed port) sees it — no Node changes needed.
+                try { TenantStatusServer.Start(prog.Hub.WebServer.ControlPanelPort, name, env); }
+                catch (Exception sx) { LogUtil.LogInfo("SysBot", $"[MultiTenant] status endpoint for '{name}' failed: {sx.Message}"); }
                 LogUtil.LogInfo("SysBot", $"[MultiTenant] '{name}' started.");
             }
             catch (Exception ex)
@@ -157,12 +170,12 @@ public static class BotContainer
             }
         }
 
-        LogUtil.LogInfo("SysBot", $"[MultiTenant] {envs.Count}/{configs.Count} tenant(s) running in ONE process. Press any key to stop all.");
-        Console.ReadKey();
-        foreach (var env in envs)
-        {
-            try { env.StopAll(); } catch { /* best effort */ }
-        }
+        LogUtil.LogInfo("SysBot", $"[MultiTenant] {envs.Count}/{configs.Count} tenant(s) running in ONE process (headless — no console input needed).");
+        // Block FOREVER with zero CPU. Do NOT use Console.ReadKey(): on a hidden/windowless
+        // console it can spuriously return or throw, which would fall through to a graceful
+        // StopAll and SILENTLY kill the whole host (the exact "vanished with no log" failure).
+        // The bots run on their own tasks; this thread just parks until the process is stopped.
+        new System.Threading.ManualResetEventSlim(false).Wait();
     }
 
     private static bool AddBot(IPokeBotRunner env, PokeBotState cfg, ProgramMode mode)
@@ -207,4 +220,59 @@ public static class BotContainer
         ProgramMode.PLZA => new PokeBotRunnerImpl<PA9>(new PokeTradeHub<PA9>(prog.Hub), new BotFactory9PLZA(), prog),
         _ => throw new IndexOutOfRangeException("Unsupported mode."),
     };
+}
+
+/// <summary>
+/// One tiny HttpListener per bot, on that bot's own ControlPanelPort, serving exactly the
+/// /api/bot/instances shape the website's trade-bridge polls for (webPort, botStatuses[],
+/// discordConnected, switchReady, tradeReady). This restores website visibility for bots that
+/// share a process, without any change to the Node trade-bridge.
+/// </summary>
+public static class TenantStatusServer
+{
+    public static void Start(int port, string botName, IPokeBotRunner runner)
+    {
+        if (port <= 0)
+        {
+            LogUtil.LogInfo("SysBot", $"[MultiTenant] '{botName}' has no ControlPanelPort — website won't see it.");
+            return;
+        }
+
+        var listener = new System.Net.HttpListener();
+        listener.Prefixes.Add($"http://127.0.0.1:{port}/");
+        listener.Prefixes.Add($"http://localhost:{port}/");
+        listener.Start();
+
+        _ = System.Threading.Tasks.Task.Run(async () =>
+        {
+            while (true)
+            {
+                System.Net.HttpListenerContext ctx;
+                try { ctx = await listener.GetContextAsync().ConfigureAwait(false); }
+                catch { break; }
+                try
+                {
+                    bool running = false;
+                    try { running = runner.Bots.Count > 0 && runner.Bots.Any(b => b.IsRunning); } catch { }
+                    var status = running ? "Idle" : "Stopped";
+                    var safeName = botName.Replace("\"", "'").Replace("\\", "/");
+                    var json = "{\"instances\":[{\"webPort\":" + port
+                        + ",\"name\":\"" + safeName + "\""
+                        + ",\"botStatuses\":[{\"status\":\"" + status + "\"}]"
+                        + ",\"discordConnected\":" + (running ? "true" : "false")
+                        + ",\"discordLatencyMs\":0"
+                        + ",\"switchReady\":true"
+                        + ",\"tradeReady\":" + (running ? "true" : "false")
+                        + "}]}";
+                    var bytes = System.Text.Encoding.UTF8.GetBytes(json);
+                    ctx.Response.ContentType = "application/json";
+                    ctx.Response.StatusCode = 200;
+                    ctx.Response.AddHeader("Access-Control-Allow-Origin", "*");
+                    await ctx.Response.OutputStream.WriteAsync(bytes).ConfigureAwait(false);
+                }
+                catch { }
+                finally { try { ctx.Response.Close(); } catch { } }
+            }
+        });
+    }
 }
