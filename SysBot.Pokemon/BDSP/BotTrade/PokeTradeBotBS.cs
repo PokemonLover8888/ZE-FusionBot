@@ -314,6 +314,26 @@ public class PokeTradeBotBS : PokeRoutineExecutor8BS, ICountBot, ITradeBot, IDis
             cln.RefreshChecksum();
 
         var tradeBS = new LegalityAnalysis(cln);
+        // Word-filter false positive: AutoOT applies the partner's GENUINE in-game OT. PKHeX's Switch
+        // word filter can flag a real, game-accepted name (e.g. "Killer" -> pattern '^kill.*'), which
+        // would wrongly revert the member to the host save's OT. If disabling ONLY the word filter makes
+        // the mon fully legal, the name was the sole issue — it's the member's real name, so ship it.
+        if (!tradeBS.Valid)
+        {
+            var prevWordFilter = ParseSettings.Settings.WordFilter.CheckWordFilter;
+            if (prevWordFilter)
+            {
+                ParseSettings.Settings.WordFilter.CheckWordFilter = false;
+                var laNoWordFilter = new LegalityAnalysis(cln);
+                ParseSettings.Settings.WordFilter.CheckWordFilter = prevWordFilter;
+                if (laNoWordFilter.Valid)
+                {
+                    Log($"[AutoOT] Partner OT '{cln.OriginalTrainerName}' tripped the Switch word filter but is otherwise legal — shipping with the member's real OT.");
+                    await SetBoxPokemonAbsolute(BoxStartOffset, cln, token, sav).ConfigureAwait(false);
+                    return cln;
+                }
+            }
+        }
         if (tradeBS.Valid)
         {
             Log($"[AUTO-OT DIAG] Pre-inject cln OT='{cln.OriginalTrainerName}' TID={cln.TID16} SID={cln.SID16} (partner expected='{tradePartner}' TID={trainerTID7} SID={trainerSID7})");

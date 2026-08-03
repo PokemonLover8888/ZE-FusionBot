@@ -332,6 +332,26 @@ public class PokeTradeBotSV(PokeTradeHub<PK9> Hub, PokeBotState Config) : PokeRo
 
         cln.RefreshChecksum();
         var tradeSV = new LegalityAnalysis(cln);
+        // Word-filter false positive: AutoOT applies the partner's GENUINE in-game OT. PKHeX's Switch
+        // word filter can flag a real, game-accepted name (e.g. "Killer" -> pattern '^kill.*'), which
+        // would wrongly revert the member to the host save's OT. If disabling ONLY the word filter makes
+        // the mon fully legal, the name was the sole issue — it's the member's real name, so ship it.
+        if (!tradeSV.Valid)
+        {
+            var prevWordFilter = ParseSettings.Settings.WordFilter.CheckWordFilter;
+            if (prevWordFilter)
+            {
+                ParseSettings.Settings.WordFilter.CheckWordFilter = false;
+                var laNoWordFilter = new LegalityAnalysis(cln);
+                ParseSettings.Settings.WordFilter.CheckWordFilter = prevWordFilter;
+                if (laNoWordFilter.Valid)
+                {
+                    Log($"[AutoOT] Partner OT '{cln.OriginalTrainerName}' tripped the Switch word filter but is otherwise legal — shipping with the member's real OT.");
+                    await SetBoxPokemonAbsolute(BoxStartOffset, cln, token, null).ConfigureAwait(false);
+                    return cln;
+                }
+            }
+        }
         if (tradeSV.Valid)
         {
             Log($"Pokemon is valid, using trade partner info (AutoOT). IsShiny={cln.IsShiny}");
