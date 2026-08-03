@@ -251,8 +251,16 @@ namespace SysBot.Pokemon.Discord.Helpers
 };
 
         // Met Location Name → ID mappings for each game
-        // Game mode is set at runtime via CurrentGameMode property
-        public static ProgramMode CurrentGameMode { get; set; } = ProgramMode.None;
+        // Game mode is set at runtime. Ambient per-bot value (AsyncLocal) so multiple same-process
+        // bots of different games don't clobber each other; fallback for non-event reads.
+        private static readonly System.Threading.AsyncLocal<ProgramMode?> AmbientMode = new();
+        private static ProgramMode _modeFallback = ProgramMode.None;
+        public static ProgramMode CurrentGameMode
+        {
+            get => AmbientMode.Value ?? _modeFallback;
+            set => _modeFallback = value;
+        }
+        public static void SetAmbientMode(ProgramMode mode) => AmbientMode.Value = mode;
 
         // Lazy-loaded location dictionaries for each game
         private static Dictionary<string, int>? _swshLocations;

@@ -10,7 +10,9 @@ using SysBot.Base;
 using SysBot.Pokemon.Discord.Helpers;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Net.Http;
 using System.Reflection;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -22,11 +24,35 @@ namespace SysBot.Pokemon.Discord;
 
 public static class SysCordSettings
 {
-    public static PokeTradeHubConfig HubConfig { get; internal set; } = default!;
+    // Ambient per-bot context so MULTIPLE SysCord instances (one per game) can share a process.
+    // AsyncLocal flows the current bot's config/manager down through an interaction's async chain;
+    // the fallback carries the last-initialized bot for non-event (background) reads.
+    private static readonly System.Threading.AsyncLocal<PokeTradeHubConfig?> AmbientHub = new();
+    private static readonly System.Threading.AsyncLocal<DiscordManager?> AmbientManager = new();
+    private static PokeTradeHubConfig _hubFallback = default!;
+    private static DiscordManager _managerFallback = default!;
 
-    public static DiscordManager Manager { get; internal set; } = default!;
+    public static PokeTradeHubConfig HubConfig
+    {
+        get => AmbientHub.Value ?? _hubFallback;
+        internal set => _hubFallback = value;
+    }
+
+    public static DiscordManager Manager
+    {
+        get => AmbientManager.Value ?? _managerFallback;
+        internal set => _managerFallback = value;
+    }
 
     public static DiscordSettings Settings => Manager.Config;
+
+    // Call at each event entry point so downstream command/precondition/helper reads
+    // resolve to THIS bot's config/manager rather than whichever initialized last.
+    public static void SetAmbient(PokeTradeHubConfig hub, DiscordManager manager)
+    {
+        AmbientHub.Value = hub;
+        AmbientManager.Value = manager;
+    }
 }
 
 public sealed partial class SysCord<T> where T : PKM, new()
@@ -127,11 +153,35 @@ public sealed partial class SysCord<T> where T : PKM, new()
             //MessageCacheSize = 50,
         });
 
-        _client = new DiscordSocketClient(new DiscordSocketConfig
+        var socketConfig = new DiscordSocketConfig
         {
             LogLevel = LogSeverity.Info,
             GatewayIntents = Guilds | GuildMessages | DirectMessages | GuildMembers | GuildPresences | MessageContent,
-        });
+        };
+
+        // Route REST through the local rate-limit governor when configured.
+        // Why: an IP-level Cloudflare block returns a bare 429 with no X-RateLimit-* headers.
+        // Discord.Net does not recognise it and retries ~20x/second for the full hour, which
+        // keeps the block alive forever (2026-07-15/16 incident, ~1,400 retries/min measured).
+        // The governor absorbs that storm locally so Discord never sees it.
+        // FAIL-OPEN: remove rest-proxy.txt (and clear DISCORD_REST_PROXY) to talk straight to Discord.
+        //
+        // The env var alone proved unreliable: a bot started by double-clicking the exe inherits
+        // Explorer's environment, which does not pick up setx until Explorer restarts. On
+        // 2026-07-19 that silently un-routed three separate launches and each one stormed the IP.
+        // rest-proxy.txt sits next to the exe, so it applies no matter how the bot is started.
+        var governorUrl = ResolveRestProxy();
+        if (!string.IsNullOrWhiteSpace(governorUrl))
+        {
+            socketConfig.RestClientProvider = _ => global::Discord.Net.Rest.DefaultRestClientProvider.Instance(governorUrl);
+            LogUtil.LogInfo("SysCord", $"REST routed through rate-limit governor: {governorUrl}");
+        }
+        else
+        {
+            LogUtil.LogInfo("SysCord", "REST is going DIRECT to Discord (no rest-proxy.txt, no DISCORD_REST_PROXY).");
+        }
+
+        _client = new DiscordSocketClient(socketConfig);
 
         // ===== DM Relay Setup =====
         ulong forwardTargetId = 0;
@@ -309,14 +359,29 @@ public sealed partial class SysCord<T> where T : PKM, new()
         if (!SysCordSettings.Settings.BotEmbedStatus)
             return;
 
-        // Check if client is connected before attempting to announce
-        if (_client == null || _client.ConnectionState != ConnectionState.Connected)
+        // On startup this fires ~1s before the gateway finishes handshaking, so returning
+        // immediately meant the "Online" embed was silently never posted. Wait briefly for
+        // the connection to settle instead of dropping the announcement.
+        if (_client == null)
         {
-            LogUtil.LogInfo("SysCord", "Cannot announce bot status: Discord client is not connected");
+            LogUtil.LogInfo("SysCord", "Cannot announce bot status: no Discord client.");
             return;
         }
 
-        var botName = string.IsNullOrEmpty(SysCordSettings.HubConfig.BotName) ? "SysBot" : SysCordSettings.HubConfig.BotName;
+        if (_client.ConnectionState != ConnectionState.Connected)
+        {
+            const int waitMs = 15000, stepMs = 250;
+            for (var waited = 0; waited < waitMs && _client.ConnectionState != ConnectionState.Connected; waited += stepMs)
+                await Task.Delay(stepMs).ConfigureAwait(false);
+
+            if (_client.ConnectionState != ConnectionState.Connected)
+            {
+                LogUtil.LogInfo("SysCord", $"Cannot announce bot status: gateway still {_client.ConnectionState} after 15s.");
+                return;
+            }
+        }
+
+        var botName = string.IsNullOrEmpty(Hub.Config.BotName) ? "SysBot" : Hub.Config.BotName;
         bool isOnline = status == "Online";
         var description = isOnline ? "The trade bot is now accepting requests." : "The trade bot has gone offline.";
         var statusIcon = isOnline ? "\ud83d\udfe2" : "\ud83d\udd34";
@@ -334,7 +399,7 @@ public sealed partial class SysCord<T> where T : PKM, new()
             .WithTimestamp(DateTimeOffset.Now)
             .Build();
 
-        foreach (var channelId in SysCordSettings.Manager.WhitelistedChannels.List.Select(channel => channel.ID))
+        foreach (var channelId in Manager.WhitelistedChannels.List.Select(channel => channel.ID))
         {
             try
             {
@@ -528,6 +593,9 @@ public sealed partial class SysCord<T> where T : PKM, new()
         {
             try
             {
+                // Multi-tenant: bind this bot's config/manager/mode to the async flow.
+                SysCordSettings.SetAmbient(Hub.Config, Manager);
+                BatchCommandNormalizer.SetAmbientMode(_config.Mode);
                 if (interaction is SocketMessageComponent component)
                 {
                     await HandleComponentInteractionAsync(component).ConfigureAwait(false);
@@ -646,10 +714,81 @@ public sealed partial class SysCord<T> where T : PKM, new()
         }
     }
 
+    /// <summary>
+    /// Resolves the Discord REST proxy. Checks rest-proxy.txt beside the exe first, then the
+    /// DISCORD_REST_PROXY env var. The file wins because it survives any launch method —
+    /// double-click, script, scheduled task — whereas the env var does not.
+    /// </summary>
+    private static string? ResolveRestProxy()
+    {
+        try
+        {
+            var path = Path.Combine(AppContext.BaseDirectory, "rest-proxy.txt");
+            if (File.Exists(path))
+            {
+                var fromFile = File.ReadAllText(path).Trim();
+                if (!string.IsNullOrWhiteSpace(fromFile) && !fromFile.StartsWith('#'))
+                    return fromFile;
+            }
+        }
+        catch (Exception ex)
+        {
+            LogUtil.LogInfo("SysCord", $"Could not read rest-proxy.txt: {ex.Message}");
+        }
+        return Environment.GetEnvironmentVariable("DISCORD_REST_PROXY");
+    }
+
+    /// <summary>
+    /// Refuses to log in while this IP is being rate-limited by Discord/Cloudflare.
+    /// Logging in during a block makes Discord.Net retry the header-less 429 ~40x/second,
+    /// which renews the block indefinitely — 1,243 retries in one minute were measured on
+    /// 2026-07-19. Waiting out the Retry-After is the only thing that ends it.
+    /// </summary>
+    private static async Task WaitForCleanIpAsync(string? proxyBase, CancellationToken token)
+    {
+        var probeUrl = string.IsNullOrWhiteSpace(proxyBase)
+            ? "https://discord.com/api/v10/gateway"
+            : proxyBase.TrimEnd('/') + "/v10/gateway";
+
+        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
+        for (var attempt = 1; !token.IsCancellationRequested; attempt++)
+        {
+            HttpResponseMessage resp;
+            try
+            {
+                resp = await http.GetAsync(probeUrl, token).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                LogUtil.LogInfo("SysCord", $"Pre-login IP check could not reach {probeUrl}: {ex.Message}. Proceeding.");
+                return;
+            }
+
+            if (resp.StatusCode != System.Net.HttpStatusCode.TooManyRequests)
+            {
+                if (attempt > 1)
+                    LogUtil.LogInfo("SysCord", "IP is clear. Logging in.");
+                return;
+            }
+
+            var wait = TimeSpan.FromMinutes(5);
+            if (resp.Headers.RetryAfter?.Delta is TimeSpan d && d > TimeSpan.Zero)
+                wait = d + TimeSpan.FromSeconds(30);
+
+            LogUtil.LogInfo("SysCord", $"Discord is rate-limiting this IP (429). Waiting {wait.TotalMinutes:F1} min before login — deliberately NOT retrying. Attempt {attempt}.");
+            await Task.Delay(wait, token).ConfigureAwait(false);
+        }
+    }
+
     public async Task MainAsync(string apiToken, CancellationToken token)
     {
         // Centralize the logic for commands into a separate method.
         await InitCommands().ConfigureAwait(false);
+
+        // Do not log in while the IP is blocked — that is what turns a 1-hour block into an
+        // all-day one. Blocks on the proxy endpoint if one is configured, since that is the
+        // path REST will actually take.
+        await WaitForCleanIpAsync(ResolveRestProxy(), token).ConfigureAwait(false);
 
         // Login and connect.
         await _client.LoginAsync(TokenType.Bot, apiToken).ConfigureAwait(false);
@@ -829,6 +968,9 @@ public sealed partial class SysCord<T> where T : PKM, new()
 
     private async Task HandleMessageAsync(SocketMessage arg)
     {
+        // Multi-tenant: bind this bot's config/manager/mode to the async flow.
+        SysCordSettings.SetAmbient(Hub.Config, Manager);
+        BatchCommandNormalizer.SetAmbientMode(_config.Mode);
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
         try
         {
@@ -874,7 +1016,7 @@ public sealed partial class SysCord<T> where T : PKM, new()
 };
 
             var correctPrefix = SysCordSettings.Settings.CommandPrefix;
-            bool allowAnyPrefix = SysCordSettings.HubConfig.Discord.AllowAnyPrefix;
+            bool allowAnyPrefix = Hub.Config.Discord.AllowAnyPrefix;
             string content = msg.Content;
             int argPos = 0;
 
