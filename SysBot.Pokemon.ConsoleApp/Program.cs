@@ -238,40 +238,63 @@ public static class TenantStatusServer
             return;
         }
 
-        var listener = new System.Net.HttpListener();
-        listener.Prefixes.Add($"http://127.0.0.1:{port}/");
-        listener.Prefixes.Add($"http://localhost:{port}/");
-        listener.Start();
+        // Raw TcpListener (loopback socket) — needs NO admin / http.sys URL reservation, unlike
+        // HttpListener which silently fails without one. Answers any request with the exact
+        // /api/bot/instances JSON the trade-bridge polls for.
+        System.Net.Sockets.TcpListener tcp;
+        try
+        {
+            tcp = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, port);
+            tcp.Start();
+        }
+        catch (Exception ex)
+        {
+            LogUtil.LogInfo("SysBot", $"[MultiTenant] status port {port} for '{botName}' failed: {ex.Message}");
+            return;
+        }
+        LogUtil.LogInfo("SysBot", $"[MultiTenant] status endpoint '{botName}' -> 127.0.0.1:{port}");
 
         _ = System.Threading.Tasks.Task.Run(async () =>
         {
             while (true)
             {
-                System.Net.HttpListenerContext ctx;
-                try { ctx = await listener.GetContextAsync().ConfigureAwait(false); }
+                System.Net.Sockets.TcpClient client;
+                try { client = await tcp.AcceptTcpClientAsync().ConfigureAwait(false); }
                 catch { break; }
-                try
+                _ = System.Threading.Tasks.Task.Run(async () =>
                 {
-                    bool running = false;
-                    try { running = runner.Bots.Count > 0 && runner.Bots.Any(b => b.IsRunning); } catch { }
-                    var status = running ? "Idle" : "Stopped";
-                    var safeName = botName.Replace("\"", "'").Replace("\\", "/");
-                    var json = "{\"instances\":[{\"webPort\":" + port
-                        + ",\"name\":\"" + safeName + "\""
-                        + ",\"botStatuses\":[{\"status\":\"" + status + "\"}]"
-                        + ",\"discordConnected\":" + (running ? "true" : "false")
-                        + ",\"discordLatencyMs\":0"
-                        + ",\"switchReady\":true"
-                        + ",\"tradeReady\":" + (running ? "true" : "false")
-                        + "}]}";
-                    var bytes = System.Text.Encoding.UTF8.GetBytes(json);
-                    ctx.Response.ContentType = "application/json";
-                    ctx.Response.StatusCode = 200;
-                    ctx.Response.AddHeader("Access-Control-Allow-Origin", "*");
-                    await ctx.Response.OutputStream.WriteAsync(bytes).ConfigureAwait(false);
-                }
-                catch { }
-                finally { try { ctx.Response.Close(); } catch { } }
+                    try
+                    {
+                        using (client)
+                        {
+                            var stream = client.GetStream();
+                            var buf = new byte[2048];
+                            try { await stream.ReadAsync(buf, 0, buf.Length).ConfigureAwait(false); } catch { }
+
+                            bool running = false;
+                            try { running = runner.Bots.Count > 0 && runner.Bots.Any(b => b.IsRunning); } catch { }
+                            var status = running ? "Idle" : "Stopped";
+                            var safeName = botName.Replace("\"", "'").Replace("\\", "/");
+                            var json = "{\"instances\":[{\"webPort\":" + port
+                                + ",\"name\":\"" + safeName + "\""
+                                + ",\"botStatuses\":[{\"status\":\"" + status + "\"}]"
+                                + ",\"discordConnected\":" + (running ? "true" : "false")
+                                + ",\"discordLatencyMs\":0"
+                                + ",\"switchReady\":true"
+                                + ",\"tradeReady\":" + (running ? "true" : "false")
+                                + "}]}";
+                            var body = System.Text.Encoding.UTF8.GetBytes(json);
+                            var head = System.Text.Encoding.ASCII.GetBytes(
+                                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n" +
+                                "Access-Control-Allow-Origin: *\r\nContent-Length: " + body.Length +
+                                "\r\nConnection: close\r\n\r\n");
+                            await stream.WriteAsync(head, 0, head.Length).ConfigureAwait(false);
+                            await stream.WriteAsync(body, 0, body.Length).ConfigureAwait(false);
+                            await stream.FlushAsync().ConfigureAwait(false);
+                        }
+                    }
+                    catch { }
+                });
             }
         });
     }
