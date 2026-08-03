@@ -9,7 +9,16 @@
     <SelfContained>true</SelfContained>
     <PublishSingleFile>true</PublishSingleFile>
     <DebugType>pdbonly</DebugType>
+    <!-- Memory: Workstation GC (one heap, not one-per-core) + concurrent, so idle bots
+         hold far less RAM. Baked in so it applies on every launch (no env var needed). -->
+    <ServerGarbageCollection>false</ServerGarbageCollection>
+    <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
   </PropertyGroup>
+
+  <!-- Return freed memory to Windows aggressively instead of hoarding it (0-9). -->
+  <ItemGroup>
+    <RuntimeHostConfigurationOption Include="System.GC.ConserveMemory" Value="9" Trim="false" />
+  </ItemGroup>
   
   <PropertyGroup>
     <PackageId>SysBot.Pokemon.WinForms</PackageId>
