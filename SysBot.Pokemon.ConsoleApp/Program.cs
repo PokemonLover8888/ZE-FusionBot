@@ -134,14 +134,15 @@ public static class BotContainer
         BatchCommandNormalizer.CurrentGameMode = configs[0].cfg.Mode;
         LogUtil.Forwarders.Add(ConsoleForwarder.Instance);
 
-        // A host must NEVER die silently. Log any unhandled failure so a crash leaves a trace.
+        // A host must never die silently — but log crashes to a LOCAL FILE, not LogUtil, which
+        // echoes to the bot's Discord logs channel. Discord.Net's frequent transient REST timeouts
+        // on fire-and-forget sends surface as "unobserved task exceptions"; they're harmless (trades
+        // still complete) and echoing them floods the channel. Real terminating crashes -> file.
+        var hostCrashLog = System.IO.Path.Combine(AppContext.BaseDirectory, "host-crash.log");
         AppDomain.CurrentDomain.UnhandledException += (_, e) =>
-            LogUtil.LogError($"[MultiTenant] UNHANDLED EXCEPTION (host terminating): {e.ExceptionObject}", "Host");
-        System.Threading.Tasks.TaskScheduler.UnobservedTaskException += (_, e) =>
-        {
-            LogUtil.LogError($"[MultiTenant] Unobserved task exception (swallowed): {e.Exception}", "Host");
-            e.SetObserved();
-        };
+        { try { System.IO.File.AppendAllText(hostCrashLog, $"{DateTime.UtcNow:u} UNHANDLED (terminating): {e.ExceptionObject}\n"); } catch { } };
+        // Observe transient fire-and-forget failures silently (same as Discord.Net's default) — no spam.
+        System.Threading.Tasks.TaskScheduler.UnobservedTaskException += (_, e) => e.SetObserved();
 
         var envs = new System.Collections.Generic.List<IPokeBotRunner>();
         foreach (var (name, prog) in configs)
