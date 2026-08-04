@@ -82,6 +82,8 @@ public class TradeStartModule<T> : ModuleBase<SocketCommandContext> where T : PK
     {
         async void Logger(PokeRoutineExecutorBase bot, PokeTradeDetail<T> detail)
         {
+          try
+          {
             if (detail.Type == PokeTradeType.Random)
                 return;
 
@@ -212,6 +214,16 @@ public class TradeStartModule<T> : ModuleBase<SocketCommandContext> where T : PK
                 .Build();
 
             await c.SendMessageAsync(embed: embed).ConfigureAwait(false);
+          }
+          catch (Exception ex)
+          {
+              // CRITICAL: this is `async void`, so ANY exception that escapes here is UNHANDLED and
+              // TERMINATES THE ENTIRE HOST PROCESS — dropping every bot in this tenant offline. The
+              // usual cause is Discord 50001 "Missing Access" (the bot lost permission in the
+              // configured trade-start channel, or the channel was deleted). This "Up Next" embed is
+              // purely cosmetic, so swallow every failure — a log post must never crash a trade bot.
+              LogUtil.LogError($"Trade-start embed post failed for channel {cid}: {ex.Message}", "TradeStartLogger");
+          }
         }
 
         // REGISTER FORWARDER ONCE EVER
