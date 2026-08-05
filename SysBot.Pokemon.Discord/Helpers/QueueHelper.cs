@@ -1033,6 +1033,51 @@ public static class QueueHelper<T> where T : PKM, new()
     }
 
     /// <summary>
+    /// Adds the "Non-Native / Home Tracker" notice field to a trade embed — the same logic the
+    /// prefix/queue embed uses inline (see ~line 300-347). Exposed so the /trade slash path shows
+    /// the identical notice (e.g. shiny-locked Z-A mons). Requires the embed's footer already set.
+    /// </summary>
+    public static void AddNonNativeNotice(EmbedBuilder embedBuilder, T pk, bool isNonNative)
+    {
+        const string exclaim = "https://raw.githubusercontent.com/PokemonLover8888/PKM-Universe-Sprite-Images/main/exclamation.gif";
+        string swshHint = "";
+        if (typeof(T) == typeof(PA9))
+        {
+            swshHint = GetHomeUploadRoute(pk.Species, pk.Form) switch
+            {
+                1 => "\n\n*For a HOME-uploadable shiny, request from **Celebi-SWSH** or **Jirachi-SWSH** instead.*",
+                2 => "\n\n*For a HOME-uploadable shiny, request from **Rayquaza-BDSP** or **Giratina-BDSP** instead.*",
+                3 => "\n\n*For a HOME-uploadable shiny, request from **Celebi-SWSH**, **Jirachi-SWSH**, **Rayquaza-BDSP**, or **Giratina-BDSP** instead.*",
+                _ => "",
+            };
+        }
+
+        if (pk is IHomeTrack homeTrack)
+        {
+            if (homeTrack.HasTracker && isNonNative)
+            {
+                embedBuilder.Footer.IconUrl = exclaim;
+                embedBuilder.AddField("**__Notice__**: **This Pokemon is Non-Native & Has Home Tracker.**", "*AutoOT not applied.*" + swshHint);
+            }
+            else if (homeTrack.HasTracker)
+            {
+                embedBuilder.Footer.IconUrl = exclaim;
+                embedBuilder.AddField("**__Notice__**: **Home Tracker Detected.**", "*AutoOT not applied.*");
+            }
+            else if (isNonNative)
+            {
+                embedBuilder.Footer.IconUrl = exclaim;
+                embedBuilder.AddField("**__Notice__**: **This Pokemon is Non-Native.**", "*Cannot enter HOME & AutoOT not applied.*" + swshHint);
+            }
+        }
+        else if (isNonNative)
+        {
+            embedBuilder.Footer.IconUrl = exclaim;
+            embedBuilder.AddField("**__Notice__**: **This Pokemon is Non-Native.**", "*Cannot enter HOME & AutoOT not applied.*" + swshHint);
+        }
+    }
+
+    /// <summary>
     /// Maps a Z-A-bot-served species/form to the HOME-uploadable redirect destination:
     /// 1 = SwSh bots only (Celebi/Jirachi), 2 = BDSP bots only (Rayquaza-BDSP/Giratina-BDSP),
     /// 3 = either works (list all four).

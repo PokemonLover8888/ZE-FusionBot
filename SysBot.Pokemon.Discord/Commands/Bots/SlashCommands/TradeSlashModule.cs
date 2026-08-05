@@ -66,7 +66,7 @@ public class TradeSlashModule<T> : InteractionModuleBase<SocketInteractionContex
             }
 
             var displayName = GameInfo.Strings.Species[processed.Pokemon.Species];
-            await QueueTradeAsync(processed.Pokemon, processed.LgCode, ignoreAutoOT, displayName).ConfigureAwait(false);
+            await QueueTradeAsync(processed.Pokemon, processed.LgCode, ignoreAutoOT, displayName, processed.IsNonNative).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -75,7 +75,7 @@ public class TradeSlashModule<T> : InteractionModuleBase<SocketInteractionContex
     }
 
     // Final legality check -> queue -> DM the code -> post the channel embed.
-    private async Task QueueTradeAsync(T pk, List<Pictocodes>? lgcode, bool ignoreAutoOT, string displayName)
+    private async Task QueueTradeAsync(T pk, List<Pictocodes>? lgcode, bool ignoreAutoOT, string displayName, bool isNonNative)
     {
         var context = Context;
         var Info = SysCord<T>.Runner.Hub.Queues.Info;
@@ -148,6 +148,9 @@ public class TradeSlashModule<T> : InteractionModuleBase<SocketInteractionContex
         DetailsExtractor<T>.AddAdditionalText(embedBuilder);
         DetailsExtractor<T>.AddNormalTradeFields(embedBuilder, embedData, context.User.Mention, pk);
         DetailsExtractor<T>.AddThumbnails(embedBuilder, false, false, embedData.HeldItemUrl);
+
+        // Same Non-Native / Home-Tracker notice the $trade path shows (e.g. shiny-locked Z-A mons).
+        QueueHelper<T>.AddNonNativeNotice(embedBuilder, pk, isNonNative);
 
         var embed = embedBuilder.Build();
 
