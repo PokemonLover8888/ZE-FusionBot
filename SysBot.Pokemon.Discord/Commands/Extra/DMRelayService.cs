@@ -45,7 +45,7 @@ namespace SysBot.Pokemon.Discord.Helpers
             }
 
             // Try sending to user
-            var user = _client.GetUser(_forwardTargetId);
+            var user = await _client.Rest.GetUserAsync(_forwardTargetId); // REST fetch (no GuildMembers intent)
             if (user != null)
             {
                 await user.SendMessageAsync(forwardContent);

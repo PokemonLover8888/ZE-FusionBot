@@ -103,7 +103,7 @@ public class TradeStartModule<T> : ModuleBase<SocketCommandContext> where T : PK
             }
 
 #pragma warning disable CS8602
-            var user = _discordClient?.GetUser(detail.Trainer.ID);
+            var user = _discordClient is null ? null : await _discordClient.Rest.GetUserAsync(detail.Trainer.ID); // REST fetch (no GuildMembers intent)
 #pragma warning restore CS8602
             if (user == null)
                 return;

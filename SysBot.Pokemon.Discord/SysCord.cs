@@ -145,7 +145,10 @@ public sealed partial class SysCord<T> where T : PKM, new()
         {
             // How much logging do you want to see?
             LogLevel = LogSeverity.Info,
-            GatewayIntents = Guilds | GuildMessages | DirectMessages | GuildMembers | GuildPresences | MessageContent,
+            // Privileged intents dropped 2026-08-05 (Phase 1): GuildMembers + GuildPresences
+            // removed so the bot needs neither once it passes 100 servers / 10k members.
+            // MessageContent still required by the 148 prefix commands (Phase 2 = slash migration).
+            GatewayIntents = Guilds | GuildMessages | DirectMessages | MessageContent,
 
             // If you or another service needs to do anything with messages
             // (ex. checking Reactions, checking the content of edited/deleted messages),
@@ -156,7 +159,10 @@ public sealed partial class SysCord<T> where T : PKM, new()
         var socketConfig = new DiscordSocketConfig
         {
             LogLevel = LogSeverity.Info,
-            GatewayIntents = Guilds | GuildMessages | DirectMessages | GuildMembers | GuildPresences | MessageContent,
+            // Privileged intents dropped 2026-08-05 (Phase 1): GuildMembers + GuildPresences
+            // removed so the bot needs neither once it passes 100 servers / 10k members.
+            // MessageContent still required by the 148 prefix commands (Phase 2 = slash migration).
+            GatewayIntents = Guilds | GuildMessages | DirectMessages | MessageContent,
         };
 
         // Route REST through the local rate-limit governor when configured.
@@ -226,7 +232,7 @@ public sealed partial class SysCord<T> where T : PKM, new()
         // Setup your DI container.
         _services = ConfigureServices();
 
-        _client.PresenceUpdated += Client_PresenceUpdated;
+        // PresenceUpdated subscription removed with the GuildPresences intent (Phase 1, 2026-08-05).
 
         _client.Disconnected += (exception) =>
         {
