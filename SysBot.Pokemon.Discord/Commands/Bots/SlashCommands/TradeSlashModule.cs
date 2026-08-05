@@ -170,8 +170,9 @@ public class TradeShowdownModal : IModal
     public string Title => "Trade a Pokémon";
 
     [InputLabel("Paste a Showdown set")]
+    // NOTE: Discord caps this placeholder at 100 characters — keep it short.
     [ModalTextInput("showdown_set", TextInputStyle.Paragraph,
-        placeholder: "Great Tusk @ Leftovers\nAbility: Protosynthesis\nTera Type: Ground\nJolly Nature\n- Headlong Rush\n- Ice Spinner",
+        placeholder: "Garchomp @ Life Orb\nJolly Nature\n- Earthquake\n- Dragon Claw",
         maxLength: 1500)]
     public string ShowdownSet { get; set; } = string.Empty;
 }
