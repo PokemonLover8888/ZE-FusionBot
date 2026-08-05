@@ -715,6 +715,31 @@ public sealed partial class SysCord<T> where T : PKM, new()
                 if (component.Message != null)
                     await component.Message.ModifyAsync(m => m.Components = new ComponentBuilder().Build()).ConfigureAwait(false);
             }
+            else if (customId.StartsWith("trade_position:"))
+            {
+                // customId: trade_position:{userId}:{uniqueTradeId} — live queue spot + ETA on demand.
+                await component.DeferAsync(ephemeral: !isDm).ConfigureAwait(false);
+                var parts = customId.Split(':');
+                if (parts.Length >= 3 && int.TryParse(parts[2], out var posTradeId))
+                {
+                    var info = Runner.Hub.Queues.Info;
+                    var pos = info.CheckPosition(component.User.Id, posTradeId, PokeRoutineType.LinkTrade);
+                    if (!pos.InQueue || pos.Position < 0)
+                    {
+                        await component.FollowupAsync("✅ You're not in the queue right now — your trade has likely already completed.", ephemeral: !isDm).ConfigureAwait(false);
+                    }
+                    else
+                    {
+                        var botct = info.Hub.Bots.Count;
+                        var eta = pos.Position > botct ? info.Hub.Config.Queues.EstimateDelay(pos.Position, botct) : 0;
+                        await component.FollowupAsync($"📍 You're **#{pos.Position}** in line — about **{eta:F1} min** to go.", ephemeral: !isDm).ConfigureAwait(false);
+                    }
+                }
+                else
+                {
+                    await component.FollowupAsync("Couldn't read your queue position.", ephemeral: !isDm).ConfigureAwait(false);
+                }
+            }
             else
             {
                 // Unknown button — pass through to InteractionService

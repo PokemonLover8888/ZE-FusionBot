@@ -40,6 +40,13 @@ public static class QueueHelper<T> where T : PKM, new()
         _requeueStore[uniqueTradeId] = entry;
     }
 
+    /// <summary>Public entry so the /trade slash path can register a trade for the "Trade Again"
+    /// button (RememberForRequeue is private). Mirrors what the prefix path stores (~line 192).</summary>
+    public static void StoreForRequeue(int uniqueTradeId, T pk, string trainerName, RequestSignificance sig,
+        PokeTradeType tradeType, List<Pictocodes>? lgcode, bool ignoreAutoOT, bool isNonNative)
+        => RememberForRequeue(uniqueTradeId, new RequeueEntry(pk, trainerName, sig, tradeType, lgcode,
+            false, false, ignoreAutoOT, false, isNonNative, DateTime.UtcNow));
+
     /// <summary>Re-submit a previously-queued trade (the "Re-queue" DM button) using the stored
     /// details — no retyping. Returns false if the request expired, is unknown, or the user is
     /// already in the queue. On success, DMs the user a fresh link code.</summary>
