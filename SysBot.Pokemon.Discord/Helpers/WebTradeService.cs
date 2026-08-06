@@ -74,6 +74,10 @@ public static class WebTradeService<T> where T : PKM, new()
         {
             ulong h = 14695981039346656037UL;
             foreach (char c in username ?? "web") { h ^= c; h *= 1099511628211UL; }
+            // Clamp to a valid Discord snowflake (<= long.MaxValue) so the trade-start embed's
+            // user lookup doesn't get a 50035 "snowflake too big". A non-existent snowflake just
+            // resolves to null, so the "Up Next" embed harmlessly skips for anonymous web users.
+            h &= 0x7FFFFFFFFFFFFFFFUL;
             return h == 0 ? 1UL : h;
         }
     }
