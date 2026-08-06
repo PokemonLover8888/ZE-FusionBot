@@ -94,7 +94,32 @@ namespace SysBot.Pokemon.WinForms
             ///////////////////////////////////////////
             /// Start main form ////////////////////////
             ///////////////////////////////////////////
-            Application.Run(new Main());
+            //
+            // FontAwesome.Sharp's IconButton constructor sometimes throws
+            //   ArgumentException: Font 'Segoe UI Black' does not support style 'Regular'
+            // while the private font collection loaded by LoadFonts() is still settling.
+            //
+            // That happens inside new Main() -> InitializeComponent(), which runs BEFORE
+            // Application.Run starts pumping messages — so the Application.ThreadException
+            // handler above never sees it and the process dies silently. Roughly 3 of 10 bots
+            // failed to launch this way on every fleet restart (measured 2026-07-19).
+            //
+            // Retrying constructs the form cleanly, which is why launching again always worked.
+            const int maxFormAttempts = 4;
+            for (var attempt = 1; ; attempt++)
+            {
+                try
+                {
+                    Application.Run(new Main());
+                    break;
+                }
+                catch (ArgumentException ex) when (attempt < maxFormAttempts
+                                                   && ex.Message.Contains("does not support style"))
+                {
+                    Console.WriteLine($"[Font Warning] Startup font race (attempt {attempt}/{maxFormAttempts}): {ex.Message}");
+                    System.Threading.Thread.Sleep(750 * attempt);
+                }
+            }
         }
 
         ////////////////////////////////////////////

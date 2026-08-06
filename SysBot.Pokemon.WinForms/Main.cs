@@ -457,6 +457,8 @@ namespace SysBot.Pokemon.WinForms
             this.ActiveControl = null;
             LogUtil.LogInfo("System", "Bot initialization complete");
 
+            TryAutoStart();
+
             // Start web server async to avoid UI blocking
             _ = Task.Run(() =>
             {
@@ -554,6 +556,54 @@ namespace SysBot.Pokemon.WinForms
                 }
             }
             catch { }
+        }
+
+        /// <summary>
+        /// Unattended start. Drop an "autostart.txt" next to the exe and the bot presses its own
+        /// START once initialization finishes — no click needed. Optionally put a millisecond
+        /// delay in the file (e.g. "5000") to stagger a fleet.
+        ///
+        /// Added 2026-07-19: restarting ten bots by hand meant ten window clicks, and doing that
+        /// under time pressure is how mistakes got made during the IP-ban incident.
+        /// Absent the file, behaviour is exactly as before.
+        /// </summary>
+        private void TryAutoStart()
+        {
+            try
+            {
+                var flag = Path.Combine(Program.WorkingDirectory, "autostart.txt");
+                if (!File.Exists(flag))
+                    return;
+
+                var delayMs = 3000;
+                var raw = File.ReadAllText(flag).Trim();
+                if (int.TryParse(raw, out var parsed) && parsed >= 0 && parsed <= 300000)
+                    delayMs = parsed;
+
+                LogUtil.LogInfo("System", $"autostart.txt found — starting all bots in {delayMs / 1000.0:F1}s (no START click needed).");
+
+                // WinForms timer so the click handler runs on the UI thread, same as a real click.
+                var timer = new System.Windows.Forms.Timer { Interval = Math.Max(250, delayMs) };
+                timer.Tick += (s, e) =>
+                {
+                    timer.Stop();
+                    timer.Dispose();
+                    try
+                    {
+                        B_Start_Click(this, EventArgs.Empty);
+                        LogUtil.LogInfo("System", "autostart: START issued.");
+                    }
+                    catch (Exception ex)
+                    {
+                        LogUtil.LogInfo("System", $"autostart failed, click START manually: {ex.Message}");
+                    }
+                };
+                timer.Start();
+            }
+            catch (Exception ex)
+            {
+                LogUtil.LogInfo("System", $"autostart check failed: {ex.Message}");
+            }
         }
 
         // Start the bot with the current config
