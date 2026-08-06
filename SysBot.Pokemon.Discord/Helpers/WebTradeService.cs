@@ -8,14 +8,16 @@ using static SysBot.Pokemon.Helpers.DetailedLegalityChecker;
 namespace SysBot.Pokemon.Discord;
 
 /// <summary>
-/// Queues a trade requested from the web Trade Portal. Reuses the exact same legalize → queue path
-/// as the /trade slash command, but with a <see cref="WebTradeNotifier{T}"/> (no Discord DMs — the
-/// browser shows the code + polls position). Returns the link code + queue position for the page.
-/// Generic per game; dispatched by <c>ProgramMode</c> at the host's web endpoint.
+/// Queues a trade requested from the web (the browser Trade Portal, via the trade-bridge). Reuses
+/// the exact legalize → queue path as /trade but with a <see cref="WebTradeNotifier{T}"/> (no Discord
+/// DMs — the page shows the code + polls position). Matches the WinForms BotServer /api/trade
+/// contract so the existing frontend + bridge work unchanged. Generic per game; dispatched by mode.
 /// </summary>
 public static class WebTradeService<T> where T : PKM, new()
 {
-    public static async Task<WebTradeResult> QueueAsync(string showdownSet, ulong userId, string username)
+    /// <param name="discordUserId">The signed-in user's Discord ID, or 0 to derive a stable id from the name.</param>
+    /// <param name="tradeCode">The link code to use, or 0/less to generate one.</param>
+    public static async Task<WebTradeResult> QueueAsync(string showdownSet, string username, ulong discordUserId, int tradeCode, bool forceShiny)
     {
         if (string.IsNullOrWhiteSpace(showdownSet))
             return WebTradeResult.Fail("No Showdown set was provided.");
@@ -26,7 +28,10 @@ public static class WebTradeService<T> where T : PKM, new()
 
         var Info = runner.Hub.Queues.Info;
 
-        // Same AutoOT rule as the batch/text/slash paths.
+        if (forceShiny && showdownSet.IndexOf("Shiny:", StringComparison.OrdinalIgnoreCase) < 0)
+            showdownSet += "\nShiny: Yes";
+
+        ulong userId = discordUserId != 0 ? discordUserId : SyntheticId(username);
         bool ignoreAutoOT = showdownSet.Contains("OT:") || showdownSet.Contains("TID:") || showdownSet.Contains("SID:");
 
         var processed = await Helpers<T>.ProcessShowdownSetAsync(showdownSet, ignoreAutoOT).ConfigureAwait(false);
@@ -40,7 +45,7 @@ public static class WebTradeService<T> where T : PKM, new()
         if (!DetailedLegalityChecker.IsLegalWithDetailedReport(pk, displayName, commandPrefix, out string? legalityError))
             return WebTradeResult.Fail("Illegal Pokémon: " + (legalityError ?? "failed the legality check."));
 
-        var code = Info.GetRandomTradeCode(userId);
+        int code = tradeCode > 0 ? tradeCode : Info.GetRandomTradeCode(userId);
         var trainer = new PokeTradeTrainerInfo(username, userId);
         var notifier = new WebTradeNotifier<T>();
 
@@ -59,6 +64,18 @@ public static class WebTradeService<T> where T : PKM, new()
 
         var position = Info.CheckPosition(userId, uniqueTradeID, PokeRoutineType.LinkTrade);
         return WebTradeResult.Ok(code, uniqueTradeID, position.Position < 1 ? 1 : position.Position, displayName);
+    }
+
+    // Stable non-zero id from a username (FNV-1a) so anonymous web users still get per-user
+    // queue de-dup + a consistent trade-code seed when no Discord id is supplied.
+    private static ulong SyntheticId(string? username)
+    {
+        unchecked
+        {
+            ulong h = 14695981039346656037UL;
+            foreach (char c in username ?? "web") { h ^= c; h *= 1099511628211UL; }
+            return h == 0 ? 1UL : h;
+        }
     }
 }
 

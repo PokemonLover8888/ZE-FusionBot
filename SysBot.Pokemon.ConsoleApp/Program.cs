@@ -163,14 +163,14 @@ public static class BotContainer
                 // trade-bridge (polls each bot's fixed port) sees it — no Node changes needed.
                 // Also accept POST /api/web-trade for the browser Trade Portal, dispatched to the
                 // right game type so WebTradeService queues on THIS bot.
-                System.Func<string, ulong, string, System.Threading.Tasks.Task<SysBot.Pokemon.Discord.WebTradeResult>>? webTrade = prog.Mode switch
+                System.Func<string, string, ulong, int, bool, System.Threading.Tasks.Task<SysBot.Pokemon.Discord.WebTradeResult>>? webTrade = prog.Mode switch
                 {
-                    ProgramMode.SWSH => (s, u, n) => SysBot.Pokemon.Discord.WebTradeService<PK8>.QueueAsync(s, u, n),
-                    ProgramMode.BDSP => (s, u, n) => SysBot.Pokemon.Discord.WebTradeService<PB8>.QueueAsync(s, u, n),
-                    ProgramMode.LA   => (s, u, n) => SysBot.Pokemon.Discord.WebTradeService<PA8>.QueueAsync(s, u, n),
-                    ProgramMode.SV   => (s, u, n) => SysBot.Pokemon.Discord.WebTradeService<PK9>.QueueAsync(s, u, n),
-                    ProgramMode.LGPE => (s, u, n) => SysBot.Pokemon.Discord.WebTradeService<PB7>.QueueAsync(s, u, n),
-                    ProgramMode.PLZA => (s, u, n) => SysBot.Pokemon.Discord.WebTradeService<PA9>.QueueAsync(s, u, n),
+                    ProgramMode.SWSH => (s, un, uid, tc, sh) => SysBot.Pokemon.Discord.WebTradeService<PK8>.QueueAsync(s, un, uid, tc, sh),
+                    ProgramMode.BDSP => (s, un, uid, tc, sh) => SysBot.Pokemon.Discord.WebTradeService<PB8>.QueueAsync(s, un, uid, tc, sh),
+                    ProgramMode.LA   => (s, un, uid, tc, sh) => SysBot.Pokemon.Discord.WebTradeService<PA8>.QueueAsync(s, un, uid, tc, sh),
+                    ProgramMode.SV   => (s, un, uid, tc, sh) => SysBot.Pokemon.Discord.WebTradeService<PK9>.QueueAsync(s, un, uid, tc, sh),
+                    ProgramMode.LGPE => (s, un, uid, tc, sh) => SysBot.Pokemon.Discord.WebTradeService<PB7>.QueueAsync(s, un, uid, tc, sh),
+                    ProgramMode.PLZA => (s, un, uid, tc, sh) => SysBot.Pokemon.Discord.WebTradeService<PA9>.QueueAsync(s, un, uid, tc, sh),
                     _ => null
                 };
                 try { TenantStatusServer.Start(prog.Hub.WebServer.ControlPanelPort, name, env, webTrade); }
@@ -246,7 +246,7 @@ public static class TenantStatusServer
     private static string JsonEsc(string? s) => (s ?? "").Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\r", " ").Replace("\n", " ");
 
     public static void Start(int port, string botName, IPokeBotRunner runner,
-        System.Func<string, ulong, string, System.Threading.Tasks.Task<SysBot.Pokemon.Discord.WebTradeResult>>? webTrade = null)
+        System.Func<string, string, ulong, int, bool, System.Threading.Tasks.Task<SysBot.Pokemon.Discord.WebTradeResult>>? webTrade = null)
     {
         if (port <= 0)
         {
@@ -308,8 +308,11 @@ public static class TenantStatusServer
 
                             if (method == "OPTIONS") { await Respond(204, "No Content", "").ConfigureAwait(false); return; }
 
-                            if (method == "POST" && pathReq.StartsWith("/api/web-trade") && webTrade != null)
+                            // POST /api/trade (WinForms/frontend shape) or /api/web-trade (our shape).
+                            if (method == "POST" && webTrade != null &&
+                                (pathReq.StartsWith("/api/trade") || pathReq.StartsWith("/api/web-trade")))
                             {
+                                bool apiTrade = pathReq.StartsWith("/api/trade");
                                 string respJson;
                                 try
                                 {
@@ -318,15 +321,23 @@ public static class TenantStatusServer
                                     using var doc = System.Text.Json.JsonDocument.Parse(bodyStr);
                                     var r = doc.RootElement;
                                     string set = r.TryGetProperty("showdownSet", out var sv) ? (sv.GetString() ?? "") : "";
+                                    string uname = r.TryGetProperty("username", out var un) ? (un.GetString() ?? "WebUser")
+                                                 : (r.TryGetProperty("discordUsername", out var dn) ? (dn.GetString() ?? "WebUser") : "WebUser");
                                     ulong uid = 0;
                                     if (r.TryGetProperty("discordUserId", out var uv))
-                                        uid = uv.ValueKind == System.Text.Json.JsonValueKind.String ? (ulong.TryParse(uv.GetString(), out var pu) ? pu : 0) : uv.GetUInt64();
-                                    string uname = r.TryGetProperty("discordUsername", out var nv) ? (nv.GetString() ?? "WebUser") : "WebUser";
+                                        uid = uv.ValueKind == System.Text.Json.JsonValueKind.String ? (ulong.TryParse(uv.GetString(), out var pu) ? pu : 0) : (uv.TryGetUInt64(out var nu) ? nu : 0);
+                                    int tcode = 0;
+                                    if (r.TryGetProperty("tradeCode", out var tv))
+                                        tcode = tv.ValueKind == System.Text.Json.JsonValueKind.String ? (int.TryParse(tv.GetString(), out var pt) ? pt : 0) : (tv.TryGetInt32(out var it) ? it : 0);
+                                    bool shiny = r.TryGetProperty("forceShiny", out var fv) && fv.ValueKind == System.Text.Json.JsonValueKind.True;
 
-                                    var result = await webTrade(set, uid, uname).ConfigureAwait(false);
-                                    respJson = result.Success
-                                        ? "{\"success\":true,\"code\":" + result.Code + ",\"tradeId\":" + result.TradeId + ",\"position\":" + result.Position + ",\"species\":\"" + JsonEsc(result.Species) + "\"}"
-                                        : "{\"success\":false,\"error\":\"" + JsonEsc(result.Error) + "\"}";
+                                    var result = await webTrade(set, uname, uid, tcode, shiny).ConfigureAwait(false);
+                                    if (result.Success)
+                                        respJson = apiTrade
+                                            ? "{\"success\":true,\"tradeId\":" + result.TradeId + ",\"tradeCode\":" + result.Code + ",\"position\":" + result.Position + ",\"pokemon\":\"" + JsonEsc(result.Species) + "\"}"
+                                            : "{\"success\":true,\"code\":" + result.Code + ",\"tradeId\":" + result.TradeId + ",\"position\":" + result.Position + ",\"species\":\"" + JsonEsc(result.Species) + "\"}";
+                                    else
+                                        respJson = "{\"success\":false,\"error\":\"" + JsonEsc(result.Error) + "\"}";
                                 }
                                 catch (Exception ex) { respJson = "{\"success\":false,\"error\":\"" + JsonEsc("Could not read the request: " + ex.Message) + "\"}"; }
                                 await Respond(200, "OK", respJson).ConfigureAwait(false);
