@@ -161,7 +161,19 @@ public static class BotContainer
                 envs.Add(env);
                 // Serve /api/bot/instances on this bot's own ControlPanelPort so the website's
                 // trade-bridge (polls each bot's fixed port) sees it — no Node changes needed.
-                try { TenantStatusServer.Start(prog.Hub.WebServer.ControlPanelPort, name, env); }
+                // Also accept POST /api/web-trade for the browser Trade Portal, dispatched to the
+                // right game type so WebTradeService queues on THIS bot.
+                System.Func<string, ulong, string, System.Threading.Tasks.Task<SysBot.Pokemon.Discord.WebTradeResult>>? webTrade = prog.Mode switch
+                {
+                    ProgramMode.SWSH => (s, u, n) => SysBot.Pokemon.Discord.WebTradeService<PK8>.QueueAsync(s, u, n),
+                    ProgramMode.BDSP => (s, u, n) => SysBot.Pokemon.Discord.WebTradeService<PB8>.QueueAsync(s, u, n),
+                    ProgramMode.LA   => (s, u, n) => SysBot.Pokemon.Discord.WebTradeService<PA8>.QueueAsync(s, u, n),
+                    ProgramMode.SV   => (s, u, n) => SysBot.Pokemon.Discord.WebTradeService<PK9>.QueueAsync(s, u, n),
+                    ProgramMode.LGPE => (s, u, n) => SysBot.Pokemon.Discord.WebTradeService<PB7>.QueueAsync(s, u, n),
+                    ProgramMode.PLZA => (s, u, n) => SysBot.Pokemon.Discord.WebTradeService<PA9>.QueueAsync(s, u, n),
+                    _ => null
+                };
+                try { TenantStatusServer.Start(prog.Hub.WebServer.ControlPanelPort, name, env, webTrade); }
                 catch (Exception sx) { LogUtil.LogInfo("SysBot", $"[MultiTenant] status endpoint for '{name}' failed: {sx.Message}"); }
                 LogUtil.LogInfo("SysBot", $"[MultiTenant] '{name}' started.");
             }
@@ -231,7 +243,10 @@ public static class BotContainer
 /// </summary>
 public static class TenantStatusServer
 {
-    public static void Start(int port, string botName, IPokeBotRunner runner)
+    private static string JsonEsc(string? s) => (s ?? "").Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\r", " ").Replace("\n", " ");
+
+    public static void Start(int port, string botName, IPokeBotRunner runner,
+        System.Func<string, ulong, string, System.Threading.Tasks.Task<SysBot.Pokemon.Discord.WebTradeResult>>? webTrade = null)
     {
         if (port <= 0)
         {
@@ -269,9 +284,56 @@ public static class TenantStatusServer
                         using (client)
                         {
                             var stream = client.GetStream();
-                            var buf = new byte[2048];
-                            try { await stream.ReadAsync(buf, 0, buf.Length).ConfigureAwait(false); } catch { }
+                            var reqBuf = new byte[8192];
+                            int read = 0;
+                            try { read = await stream.ReadAsync(reqBuf, 0, reqBuf.Length).ConfigureAwait(false); } catch { }
+                            var reqText = System.Text.Encoding.UTF8.GetString(reqBuf, 0, read);
 
+                            string method = "GET", pathReq = "/";
+                            int sp1 = reqText.IndexOf(' ');
+                            if (sp1 > 0) { method = reqText.Substring(0, sp1); int sp2 = reqText.IndexOf(' ', sp1 + 1); if (sp2 > sp1) pathReq = reqText.Substring(sp1 + 1, sp2 - sp1 - 1); }
+
+                            async System.Threading.Tasks.Task Respond(int codeNum, string codeText, string payload)
+                            {
+                                var b = System.Text.Encoding.UTF8.GetBytes(payload);
+                                var h = System.Text.Encoding.ASCII.GetBytes(
+                                    "HTTP/1.1 " + codeNum + " " + codeText + "\r\nContent-Type: application/json\r\n" +
+                                    "Access-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: GET, POST, OPTIONS\r\n" +
+                                    "Access-Control-Allow-Headers: Content-Type\r\nContent-Length: " + b.Length +
+                                    "\r\nConnection: close\r\n\r\n");
+                                await stream.WriteAsync(h, 0, h.Length).ConfigureAwait(false);
+                                if (b.Length > 0) await stream.WriteAsync(b, 0, b.Length).ConfigureAwait(false);
+                                await stream.FlushAsync().ConfigureAwait(false);
+                            }
+
+                            if (method == "OPTIONS") { await Respond(204, "No Content", "").ConfigureAwait(false); return; }
+
+                            if (method == "POST" && pathReq.StartsWith("/api/web-trade") && webTrade != null)
+                            {
+                                string respJson;
+                                try
+                                {
+                                    int bs = reqText.IndexOf("\r\n\r\n");
+                                    string bodyStr = bs >= 0 ? reqText.Substring(bs + 4) : "";
+                                    using var doc = System.Text.Json.JsonDocument.Parse(bodyStr);
+                                    var r = doc.RootElement;
+                                    string set = r.TryGetProperty("showdownSet", out var sv) ? (sv.GetString() ?? "") : "";
+                                    ulong uid = 0;
+                                    if (r.TryGetProperty("discordUserId", out var uv))
+                                        uid = uv.ValueKind == System.Text.Json.JsonValueKind.String ? (ulong.TryParse(uv.GetString(), out var pu) ? pu : 0) : uv.GetUInt64();
+                                    string uname = r.TryGetProperty("discordUsername", out var nv) ? (nv.GetString() ?? "WebUser") : "WebUser";
+
+                                    var result = await webTrade(set, uid, uname).ConfigureAwait(false);
+                                    respJson = result.Success
+                                        ? "{\"success\":true,\"code\":" + result.Code + ",\"tradeId\":" + result.TradeId + ",\"position\":" + result.Position + ",\"species\":\"" + JsonEsc(result.Species) + "\"}"
+                                        : "{\"success\":false,\"error\":\"" + JsonEsc(result.Error) + "\"}";
+                                }
+                                catch (Exception ex) { respJson = "{\"success\":false,\"error\":\"" + JsonEsc("Could not read the request: " + ex.Message) + "\"}"; }
+                                await Respond(200, "OK", respJson).ConfigureAwait(false);
+                                return;
+                            }
+
+                            // Default: the /api/bot/instances status JSON the trade-bridge polls.
                             bool running = false;
                             try { running = runner.Bots.Count > 0 && runner.Bots.Any(b => b.IsRunning); } catch { }
                             var status = running ? "Idle" : "Stopped";
@@ -280,18 +342,9 @@ public static class TenantStatusServer
                                 + ",\"name\":\"" + safeName + "\""
                                 + ",\"botStatuses\":[{\"status\":\"" + status + "\"}]"
                                 + ",\"discordConnected\":" + (running ? "true" : "false")
-                                + ",\"discordLatencyMs\":0"
-                                + ",\"switchReady\":true"
-                                + ",\"tradeReady\":" + (running ? "true" : "false")
+                                + ",\"discordLatencyMs\":0,\"switchReady\":true,\"tradeReady\":" + (running ? "true" : "false")
                                 + "}]}";
-                            var body = System.Text.Encoding.UTF8.GetBytes(json);
-                            var head = System.Text.Encoding.ASCII.GetBytes(
-                                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n" +
-                                "Access-Control-Allow-Origin: *\r\nContent-Length: " + body.Length +
-                                "\r\nConnection: close\r\n\r\n");
-                            await stream.WriteAsync(head, 0, head.Length).ConfigureAwait(false);
-                            await stream.WriteAsync(body, 0, body.Length).ConfigureAwait(false);
-                            await stream.FlushAsync().ConfigureAwait(false);
+                            await Respond(200, "OK", json).ConfigureAwait(false);
                         }
                     }
                     catch { }
