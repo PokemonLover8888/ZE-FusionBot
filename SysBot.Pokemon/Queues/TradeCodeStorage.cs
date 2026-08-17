@@ -87,34 +87,42 @@ public class TradeCodeStorage
     public void UpdateTradeDetails(ulong trainerID, string ot, int tid, int sid)
     {
         LoadFromFile();
-        if (_tradeCodeDetails!.TryGetValue(trainerID, out var details))
+        // Insert-if-missing: AutoOT relies on this to cache a member's real in-game OT/TID/SID read live
+        // during a trade. A first-time trader has no entry yet, so a plain "update only" silently dropped
+        // their OT and AutoOT never worked (member kept the host OT). Create the entry so the NEXT trade
+        // applies it. A brand-new entry gets a proper random trade code (never 0 — that would break codes).
+        if (!_tradeCodeDetails!.TryGetValue(trainerID, out var details))
         {
-            details.OT = ot;
-            details.TID = tid;
-            details.SID = sid;
-            SaveToFile();
+            details = new TradeCodeDetails { Code = GenerateRandomTradeCode(), TradeCount = 0 };
+            _tradeCodeDetails[trainerID] = details;
         }
+        details.OT = ot;
+        details.TID = tid;
+        details.SID = sid;
+        SaveToFile();
     }
 
     // New overload that includes gender and language parameters
     public void UpdateTradeDetails(ulong trainerID, string ot, int tid, int sid, byte? gender = null, int? language = null)
     {
         LoadFromFile();
-        if (_tradeCodeDetails!.TryGetValue(trainerID, out var details))
+        if (!_tradeCodeDetails!.TryGetValue(trainerID, out var details))
         {
-            details.OT = ot;
-            details.TID = tid;
-            details.SID = sid;
-
-            // Only update if values are provided
-            if (gender.HasValue)
-                details.Gender = gender;
-
-            if (language.HasValue)
-                details.Language = language;
-
-            SaveToFile();
+            details = new TradeCodeDetails { Code = GenerateRandomTradeCode(), TradeCount = 0 };
+            _tradeCodeDetails[trainerID] = details;
         }
+        details.OT = ot;
+        details.TID = tid;
+        details.SID = sid;
+
+        // Only update if values are provided
+        if (gender.HasValue)
+            details.Gender = gender;
+
+        if (language.HasValue)
+            details.Language = language;
+
+        SaveToFile();
     }
 
     public bool UpdateTradeCode(ulong trainerID, int newCode)
@@ -169,23 +177,25 @@ public class TradeCodeStorage
     public void UpdateTradeDetails(ulong trainerID, string ot, int tid, int sid, string? quote = null, byte? gender = null, int? language = null)
     {
         LoadFromFile();
-        if (_tradeCodeDetails!.TryGetValue(trainerID, out var details))
+        if (!_tradeCodeDetails!.TryGetValue(trainerID, out var details))
         {
-            details.OT = ot;
-            details.TID = tid;
-            details.SID = sid;
-
-            if (quote != null)
-                details.Quote = quote;
-
-            if (gender.HasValue)
-                details.Gender = gender;
-
-            if (language.HasValue)
-                details.Language = language;
-
-            SaveToFile();
+            details = new TradeCodeDetails { Code = GenerateRandomTradeCode(), TradeCount = 0 };
+            _tradeCodeDetails[trainerID] = details;
         }
+        details.OT = ot;
+        details.TID = tid;
+        details.SID = sid;
+
+        if (quote != null)
+            details.Quote = quote;
+
+        if (gender.HasValue)
+            details.Gender = gender;
+
+        if (language.HasValue)
+            details.Language = language;
+
+        SaveToFile();
     }
 
     public class TradeCodeDetails

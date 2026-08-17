@@ -26,5 +26,9 @@
     <Reference Include="PKHeX.Core">
       <HintPath>..\SysBot.Pokemon\deps\PKHeX.Core.dll</HintPath>
     </Reference>
+    <!-- PKHeX.Drawing.PokeSprite's embedded sprite resources are serialized with
+         System.Resources.Extensions; without it SpriteUtil's type initializer throws
+         (FileNotFoundException) and LGPE pictocode sprite images fail on this headless host. -->
+    <PackageReference Include="System.Resources.Extensions" Version="10.0.0" />
   </ItemGroup>
 </Project>

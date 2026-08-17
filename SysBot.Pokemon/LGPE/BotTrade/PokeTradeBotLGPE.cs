@@ -407,6 +407,13 @@ public class PokeTradeBotLGPE(PokeTradeHub<PB7> Hub, PokeBotState Config) : Poke
             await ExitTrade(false, token);
             return result;
         }
+
+        // NOTE: AutoOT is applied ONCE, at the top of this method (before the box is written on the overworld),
+        // from the cached trade-partner details. We do NOT re-stamp here mid-trade: LGPE only picks up box
+        // writes made on the OVERWORLD (see ProcessCloneTradeAsync, which must ExitTrade before WriteBoxPokemon),
+        // so a re-write at this point would never reach the game. Instead the live partner read above caches the
+        // member's real OT/TID/SID (UpdateTradeDetails, now insert-if-missing) so the NEXT trade applies it.
+
         while (BitConverter.ToUInt16(await SwitchConnection.ReadBytesMainAsync(ScreenOff, 2, token), 0) == Boxscreen)
         {
             await Click(A, 1000, token);

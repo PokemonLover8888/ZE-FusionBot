@@ -30,5 +30,8 @@ module.exports = {
     { name: 'host-C', script: STD, cwd: STD_CWD, args: [cfg('Rayquaza-BDSP-Bot'), cfg('Hoopa-PLZA-Bot')], ...common },
     { name: 'host-D', script: SV,  cwd: SV_CWD,  args: [cfg('Mew-SV-Bot')], ...common },
     { name: 'host-E', script: SV,  cwd: SV_CWD,  args: [cfg('Meloetta-SV-Bot')], ...common },
+    // Shaymin (Legends Arceus / PA8) runs in its OWN process: sharing a host with a Legends Z-A
+    // (PA9) bot like Floette cross-wires their Switch connections (Floette grabbed 10.0.0.159).
+    { name: 'host-F', script: STD, cwd: STD_CWD, args: [cfg('Shaymin-PLA-Bot')], ...common },
   ],
 };

@@ -278,8 +278,18 @@ public class DiscordTradeNotifier<T> : IPokeTradeNotifier<T>, IDisposable
         }
         else if (Data is PB7)
         {
-            var (thefile, lgcodeembed) = CreateLGLinkCodeSpriteEmbed(LGCode);
-            Trader.SendFileAsync(thefile, $"Initializing trade{receive}. Please be ready. Your code is", embed: lgcodeembed).ConfigureAwait(false);
+            try
+            {
+                var (thefile, lgcodeembed) = CreateLGLinkCodeSpriteEmbed(LGCode);
+                Trader.SendFileAsync(thefile, $"Initializing trade{receive}. Please be ready. Your code is", embed: lgcodeembed).ConfigureAwait(false);
+            }
+            catch
+            {
+                // Pictocode SPRITE image needs System.Drawing, which the headless ConsoleApp host doesn't
+                // bundle (SpriteUtil type-initializer throws). Send the code as plain text so the Let's Go
+                // trade still starts instead of erroring out.
+                Trader.SendMessageAsync($"Initializing trade{receive}. Please be ready. Your Let's Go code — select these 3 Pokémon in order: **{string.Join(", ", LGCode)}**").ConfigureAwait(false);
+            }
         }
         else
         {

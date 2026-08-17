@@ -137,8 +137,19 @@ public static class QueueHelper<T> where T : PKM, new()
             {
                 if (trade is PB7 && lgcode != null)
                 {
-                    var (thefile, lgcodeembed) = CreateLGLinkCodeSpriteEmbed(lgcode);
-                    await trader.SendFileAsync(thefile, "Your trade code will be.", embed: lgcodeembed).ConfigureAwait(false);
+                    try
+                    {
+                        var (thefile, lgcodeembed) = CreateLGLinkCodeSpriteEmbed(lgcode);
+                        await trader.SendFileAsync(thefile, "Your trade code will be.", embed: lgcodeembed).ConfigureAwait(false);
+                    }
+                    catch
+                    {
+                        // The LGPE pictocode SPRITE image needs PKHeX.Drawing.PokeSprite + System.Drawing,
+                        // which the headless multi-tenant ConsoleApp host doesn't bundle (throws
+                        // FileNotFoundException). The image is purely cosmetic — fall back to the code as
+                        // plain text so the Let's Go trade still queues instead of failing outright.
+                        await trader.SendMessageAsync($"Your Let's Go link-trade code — select these 3 Pokémon in order: **{string.Join(", ", lgcode)}**").ConfigureAwait(false);
+                    }
                 }
                 else
                 {

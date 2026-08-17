@@ -1951,6 +1951,31 @@ public static class Helpers<T> where T : PKM, new()
             catch (Exception ex) { LogUtil.LogError($"[TradeModule] BDSP native safety net failed: {ex.Message}", "Helpers"); }
         }
 
+        // LA (PA8) native safety net (same mechanism as BDSP). The Lake trio (Uxie/Mesprit/Azelf),
+        // creation trio (Dialga/Palkia/Giratina), Heatran, Regigigas, Cresselia, Darkrai, Arceus,
+        // Enamorus etc. ARE catchable natively in Legends: Arceus, but the threaded native-first path
+        // can leak a BDSP/transfer encounter → Non-Native. That blocks the HOME tracker + AutoOT and
+        // makes the LA bot decline the request ("can't be made HOME-ready by a Legends: Arceus bot").
+        // Rebuild via the direct synchronous NativeOnly path. LA bots run v26.5.6.0 which enforces
+        // shiny-locks, so GetLegalNativeDirect's internal la.Valid rejects an illegal native shiny
+        // (LA legendaries are shiny-locked) and the transfer is kept — safe for BOTH shiny and non-shiny.
+        if (typeof(T) == typeof(PA8)
+            && pkm is PA8 plaNonNative && plaNonNative.Species == template.Species
+            && new LegalityAnalysis(plaNonNative).EncounterOriginal.Context != plaNonNative.Context)
+        {
+            try
+            {
+                var directPla = sav.GetLegalNativeDirect(template);
+                if (directPla is PA8 plaNative)
+                {
+                    pkm = plaNative;
+                    la = new LegalityAnalysis(pkm);
+                    LogUtil.LogInfo($"[TradeModule] LA native safety net: rebuilt {pkm.Species} natively via direct path (was Non-Native), valid={la.Valid}", "Helpers");
+                }
+            }
+            catch (Exception ex) { LogUtil.LogError($"[TradeModule] LA native safety net failed: {ex.Message}", "Helpers"); }
+        }
+
         // SwSh native safety net (same mechanism as BDSP/SV/Z-A). Crown Tundra Max Lair /
         // Dynamax Adventure legendaries (Giratina, the creation & lake trios, weather trio,
         // birds/beasts, etc.) ARE catchable natively in SwSh and CAN be shiny
@@ -2449,6 +2474,49 @@ public static class Helpers<T> where T : PKM, new()
         // origin game at all (Pokémon GO, old-gen events).
         //
         // Exceptions, unchanged: pre-made DB files, and anything already carrying a real HOME tracker.
+        // LAST-CHANCE NATIVE REBUILD (runs right before the decline, where pk is the final
+        // converted entity of our format). The species may be native to THIS bot's game, but the
+        // default-priority legalizer picked a transfer encounter (e.g. Mesprit on a Legends: Arceus
+        // bot getting a BDSP encounter → Non-Native). The earlier per-game safety nets can miss this
+        // because at that point pkm was still the encounter's native format, not yet converted to T.
+        // Force NativeOnly priority here; if it yields a genuinely native, legal entity of our format,
+        // adopt it — turning a decline into a successful native, HOME-ready trade. Species with NO
+        // native encounter in our game (Eternatus on LA, etc.) return null and still decline correctly.
+        if (isNonNative && result != "PreMadeFile"
+            && !(pk is IHomeTrack ht0 && ht0.HasTracker)
+            && !HomeOriginAdvisor.IsNativeToBot(pk))
+        {
+            try
+            {
+                // Strip the requested Ball for the native rebuild. Native encounters use game-specific
+                // ball ITEMS — Legends: Arceus's Poké Ball is a different item id from the modern one —
+                // so a "Ball: Poke Ball" line forces ALM off the native encounter to a game where that
+                // exact ball is valid (BDSP for Mesprit) → Non-Native → decline. The website ALWAYS
+                // appends a Ball line, so without this every LA legendary web request fails. Dropping it
+                // lets ALM use the encounter's natural ball, which is correct and legal for the origin.
+                var noBallLines = set.GetSetLines().Where(l => !l.TrimStart().StartsWith("Ball:", StringComparison.OrdinalIgnoreCase));
+                var nativeTemplate = AutoLegalityWrapper.GetTemplate(new ShowdownSet(string.Join("\n", noBallLines)));
+
+                // ALM is non-deterministic — a single GetLegalNativeDirect can fail to find the native
+                // encounter one call and succeed the next (proven: the scratchpad generator needed a
+                // retry loop). Retry until it yields a native legal entity, or we exhaust attempts. A
+                // species with NO native encounter in our game returns null every time and falls through
+                // to the decline below; a real native (Mesprit on LA, etc.) resolves within a few tries.
+                for (int rebuildAttempt = 0; rebuildAttempt < 25 && isNonNative; rebuildAttempt++)
+                {
+                    var nativeRetry = sav.GetLegalNativeDirect(nativeTemplate);
+                    if (nativeRetry is T nTyped && HomeOriginAdvisor.IsNativeToBot(nTyped)
+                        && new LegalityAnalysis(nTyped).Valid)
+                    {
+                        pk = nTyped;
+                        isNonNative = false;
+                        LogUtil.LogInfo($"[TradeModule] native last-chance rebuild: {GameInfo.Strings.Species[template.Species]} rebuilt natively (was Non-Native {nativeRetry.Version}) on attempt {rebuildAttempt + 1} — shipping instead of declining", "Helpers");
+                    }
+                }
+            }
+            catch (Exception ex) { LogUtil.LogError($"[TradeModule] native last-chance rebuild failed: {ex.Message}", "Helpers"); }
+        }
+
         if (isNonNative && result != "PreMadeFile"
             && !(pk is IHomeTrack trk && trk.HasTracker)
             && !HomeOriginAdvisor.IsNativeToBot(pk))

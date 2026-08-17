@@ -173,7 +173,42 @@ public static class BotContainer
                     ProgramMode.PLZA => (s, un, uid, tc, sh) => SysBot.Pokemon.Discord.WebTradeService<PA9>.QueueAsync(s, un, uid, tc, sh),
                     _ => null
                 };
-                try { TenantStatusServer.Start(prog.Hub.WebServer.ControlPanelPort, name, env, webTrade); }
+                // Live queue for THIS bot in the WinForms /api/bot/queue/list shape — the bridge
+                // aggregates every bot's list into /queue so the website can track a web trade's
+                // position + completion (else it's stuck at 14%).
+                System.Func<string>? queueList = prog.Mode switch
+                {
+                    ProgramMode.SWSH => SysBot.Pokemon.Discord.WebTradeService<PK8>.GetQueueListJson,
+                    ProgramMode.BDSP => SysBot.Pokemon.Discord.WebTradeService<PB8>.GetQueueListJson,
+                    ProgramMode.LA   => SysBot.Pokemon.Discord.WebTradeService<PA8>.GetQueueListJson,
+                    ProgramMode.SV   => SysBot.Pokemon.Discord.WebTradeService<PK9>.GetQueueListJson,
+                    ProgramMode.LGPE => SysBot.Pokemon.Discord.WebTradeService<PB7>.GetQueueListJson,
+                    ProgramMode.PLZA => SysBot.Pokemon.Discord.WebTradeService<PA9>.GetQueueListJson,
+                    _ => null
+                };
+                // The Forge: live legality + HOME-ready preview for a Showdown set (no trade queued).
+                System.Func<string, System.Threading.Tasks.Task<SysBot.Pokemon.Discord.WebValidateResult>>? validate = prog.Mode switch
+                {
+                    ProgramMode.SWSH => s => SysBot.Pokemon.Discord.WebTradeService<PK8>.ValidateAsync(s),
+                    ProgramMode.BDSP => s => SysBot.Pokemon.Discord.WebTradeService<PB8>.ValidateAsync(s),
+                    ProgramMode.LA   => s => SysBot.Pokemon.Discord.WebTradeService<PA8>.ValidateAsync(s),
+                    ProgramMode.SV   => s => SysBot.Pokemon.Discord.WebTradeService<PK9>.ValidateAsync(s),
+                    ProgramMode.LGPE => s => SysBot.Pokemon.Discord.WebTradeService<PB7>.ValidateAsync(s),
+                    ProgramMode.PLZA => s => SysBot.Pokemon.Discord.WebTradeService<PA9>.ValidateAsync(s),
+                    _ => null
+                };
+                // One-code batch: queue a whole box under a single link code (web version of $bt).
+                System.Func<System.Collections.Generic.List<string>, string, ulong, int, bool, System.Threading.Tasks.Task<SysBot.Pokemon.Discord.WebTradeResult>>? batchTrade = prog.Mode switch
+                {
+                    ProgramMode.SWSH => (l, un, uid, tc, sh) => SysBot.Pokemon.Discord.WebTradeService<PK8>.QueueBatchAsync(l, un, uid, tc, sh),
+                    ProgramMode.BDSP => (l, un, uid, tc, sh) => SysBot.Pokemon.Discord.WebTradeService<PB8>.QueueBatchAsync(l, un, uid, tc, sh),
+                    ProgramMode.LA   => (l, un, uid, tc, sh) => SysBot.Pokemon.Discord.WebTradeService<PA8>.QueueBatchAsync(l, un, uid, tc, sh),
+                    ProgramMode.SV   => (l, un, uid, tc, sh) => SysBot.Pokemon.Discord.WebTradeService<PK9>.QueueBatchAsync(l, un, uid, tc, sh),
+                    ProgramMode.LGPE => (l, un, uid, tc, sh) => SysBot.Pokemon.Discord.WebTradeService<PB7>.QueueBatchAsync(l, un, uid, tc, sh),
+                    ProgramMode.PLZA => (l, un, uid, tc, sh) => SysBot.Pokemon.Discord.WebTradeService<PA9>.QueueBatchAsync(l, un, uid, tc, sh),
+                    _ => null
+                };
+                try { TenantStatusServer.Start(prog.Hub.WebServer.ControlPanelPort, name, env, webTrade, queueList, validate, batchTrade); }
                 catch (Exception sx) { LogUtil.LogInfo("SysBot", $"[MultiTenant] status endpoint for '{name}' failed: {sx.Message}"); }
                 LogUtil.LogInfo("SysBot", $"[MultiTenant] '{name}' started.");
             }
@@ -246,7 +281,10 @@ public static class TenantStatusServer
     private static string JsonEsc(string? s) => (s ?? "").Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\r", " ").Replace("\n", " ");
 
     public static void Start(int port, string botName, IPokeBotRunner runner,
-        System.Func<string, string, ulong, int, bool, System.Threading.Tasks.Task<SysBot.Pokemon.Discord.WebTradeResult>>? webTrade = null)
+        System.Func<string, string, ulong, int, bool, System.Threading.Tasks.Task<SysBot.Pokemon.Discord.WebTradeResult>>? webTrade = null,
+        System.Func<string>? queueList = null,
+        System.Func<string, System.Threading.Tasks.Task<SysBot.Pokemon.Discord.WebValidateResult>>? validate = null,
+        System.Func<System.Collections.Generic.List<string>, string, ulong, int, bool, System.Threading.Tasks.Task<SysBot.Pokemon.Discord.WebTradeResult>>? batchTrade = null)
     {
         if (port <= 0)
         {
@@ -307,6 +345,81 @@ public static class TenantStatusServer
                             }
 
                             if (method == "OPTIONS") { await Respond(204, "No Content", "").ConfigureAwait(false); return; }
+
+                            // GET /api/bot/queue/list — this bot's live queue (WinForms shape) so the
+                            // bridge/website can track a web trade's position + completion.
+                            if (method == "GET" && queueList != null && pathReq.StartsWith("/api/bot/queue/list"))
+                            {
+                                string q;
+                                try { q = queueList(); } catch (Exception ex) { q = "{\"success\":false,\"queueCount\":0,\"queue\":[],\"error\":\"" + JsonEsc(ex.Message) + "\"}"; }
+                                await Respond(200, "OK", q).ConfigureAwait(false);
+                                return;
+                            }
+
+                            // POST /api/trade/batch — one-code batch: a whole box under a single link code.
+                            // MUST be before /api/trade (StartsWith-matches this path too).
+                            if (method == "POST" && batchTrade != null && pathReq.StartsWith("/api/trade/batch"))
+                            {
+                                string bJson;
+                                try
+                                {
+                                    int bs = reqText.IndexOf("\r\n\r\n");
+                                    string bodyStr = bs >= 0 ? reqText.Substring(bs + 4) : "";
+                                    using var doc = System.Text.Json.JsonDocument.Parse(bodyStr);
+                                    var r = doc.RootElement;
+                                    var sets = new System.Collections.Generic.List<string>();
+                                    if (r.TryGetProperty("sets", out var sv) && sv.ValueKind == System.Text.Json.JsonValueKind.Array)
+                                        foreach (var el in sv.EnumerateArray()) { var s = el.GetString(); if (!string.IsNullOrWhiteSpace(s)) sets.Add(s); }
+                                    string uname = r.TryGetProperty("username", out var un) ? (un.GetString() ?? "WebUser") : "WebUser";
+                                    ulong uid = 0;
+                                    if (r.TryGetProperty("discordUserId", out var uv))
+                                        uid = uv.ValueKind == System.Text.Json.JsonValueKind.String ? (ulong.TryParse(uv.GetString(), out var pu) ? pu : 0) : (uv.TryGetUInt64(out var nu) ? nu : 0);
+                                    int tcode = 0;
+                                    if (r.TryGetProperty("tradeCode", out var tv))
+                                        tcode = tv.ValueKind == System.Text.Json.JsonValueKind.String ? (int.TryParse(tv.GetString(), out var pt) ? pt : 0) : (tv.TryGetInt32(out var it) ? it : 0);
+                                    bool shiny = r.TryGetProperty("forceShiny", out var fv) && fv.ValueKind == System.Text.Json.JsonValueKind.True;
+
+                                    var result = await batchTrade(sets, uname, uid, tcode, shiny).ConfigureAwait(false);
+                                    bJson = result.Success
+                                        ? "{\"success\":true,\"tradeId\":" + result.TradeId + ",\"tradeCode\":" + result.Code + ",\"position\":" + result.Position + ",\"pokemon\":\"" + JsonEsc(result.Species) + "\"}"
+                                        : "{\"success\":false,\"error\":\"" + JsonEsc(result.Error) + "\"}";
+                                }
+                                catch (Exception ex) { bJson = "{\"success\":false,\"error\":\"" + JsonEsc("Could not read the request: " + ex.Message) + "\"}"; }
+                                await Respond(200, "OK", bJson).ConfigureAwait(false);
+                                return;
+                            }
+
+                            // POST /api/trade/validate — The Forge: legality + HOME-ready preview, NO queue.
+                            // MUST be checked before /api/trade (which StartsWith-matches this path too).
+                            if (method == "POST" && validate != null && pathReq.StartsWith("/api/trade/validate"))
+                            {
+                                string vJson;
+                                try
+                                {
+                                    int bs = reqText.IndexOf("\r\n\r\n");
+                                    string bodyStr = bs >= 0 ? reqText.Substring(bs + 4) : "";
+                                    using var doc = System.Text.Json.JsonDocument.Parse(bodyStr);
+                                    string set = doc.RootElement.TryGetProperty("showdownSet", out var sv) ? (sv.GetString() ?? "") : "";
+                                    var r = await validate(set).ConfigureAwait(false);
+                                    var sb = new System.Text.StringBuilder();
+                                    sb.Append("{\"legal\":").Append(r.Legal ? "true" : "false")
+                                      .Append(",\"homeReady\":").Append(r.HomeReady ? "true" : "false")
+                                      .Append(",\"species\":\"").Append(JsonEsc(r.Species)).Append('"')
+                                      .Append(",\"shiny\":").Append(r.Shiny ? "true" : "false")
+                                      .Append(",\"ball\":\"").Append(JsonEsc(r.Ball)).Append('"')
+                                      .Append(",\"level\":").Append(r.Level)
+                                      .Append(",\"issues\":[");
+                                    for (int i = 0; i < r.Issues.Length; i++) { if (i > 0) sb.Append(','); sb.Append('"').Append(JsonEsc(r.Issues[i])).Append('"'); }
+                                    sb.Append(']');
+                                    if (r.HomeAdvice != null) sb.Append(",\"homeAdvice\":\"").Append(JsonEsc(r.HomeAdvice)).Append('"');
+                                    if (r.Error != null) sb.Append(",\"error\":\"").Append(JsonEsc(r.Error)).Append('"');
+                                    sb.Append('}');
+                                    vJson = sb.ToString();
+                                }
+                                catch (Exception ex) { vJson = "{\"legal\":false,\"error\":\"" + JsonEsc("Could not read the request: " + ex.Message) + "\"}"; }
+                                await Respond(200, "OK", vJson).ConfigureAwait(false);
+                                return;
+                            }
 
                             // POST /api/trade (WinForms/frontend shape) or /api/web-trade (our shape).
                             if (method == "POST" && webTrade != null &&
