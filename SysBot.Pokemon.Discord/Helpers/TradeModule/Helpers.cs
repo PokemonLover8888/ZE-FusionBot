@@ -825,6 +825,15 @@ public static class Helpers<T> where T : PKM, new()
                                 // shiny file and flips it (wrong met location), and vice versa.
                                 bool hasMatchingShinyFile = matchPatterns.Any(p => Directory.GetFiles(preMadeFolder, p).Length > 0);
                                 var patterns = hasMatchingShinyFile ? matchPatterns : matchPatterns.Concat(flipPatterns).ToArray();
+                                // FORM-RECOVERY (isZALegPre only): the requested form can be silently
+                                // lost to 0 by runtime localization state (a prior non-English trade
+                                // leaves the global form-name tables so "Floette-Eternal" parses to
+                                // species 670 / form 0). These species have exactly one form-specific
+                                // pre-made .pa9 (e.g. Floette-Eternal = 0670-05), so add a form-agnostic
+                                // last-resort pattern that matches it regardless of the parsed form.
+                                // Every loaded file is still legality-checked below, so this can't ship junk.
+                                if (formSuffix.Length == 0)
+                                    patterns = patterns.Concat(new[] { $"{prefix}-*{ext}" }).ToArray();
                                 LogUtil.LogInfo($"[TradeModule] Mythical fallback START: species={template.Species}, ext={ext}, shiny={template.Shiny}, formSuffix={formSuffix}", "Helpers");
                                 bool foundAny = false;
                                 foreach (var pat in patterns)
@@ -1088,7 +1097,7 @@ public static class Helpers<T> where T : PKM, new()
         // Falls back silently to the original result if no wild/egg alternative exists
         // (e.g. Floette-Eternal, Zarude — species with no wild/egg encounter at all).
         // ============================================================================
-        if (!isEgg && !wantsRaidMark)
+        if (!isEgg && !wantsRaidMark && result != "PreMadeFile")
         {
             var fixedOtCheck = new LegalityAnalysis(pkm);
             if (fixedOtCheck.Valid && AutoLegalityWrapper.IsFixedOT(fixedOtCheck.EncounterOriginal, pkm))
@@ -1845,6 +1854,7 @@ public static class Helpers<T> where T : PKM, new()
         // the usual culprit. Only replaces the result when the rebuild is genuinely NATIVE
         // (context match), so cross-gen species with no Z-A encounter are untouched.
         if (typeof(T) == typeof(PA9) && !template.Shiny && !isZAWildLegendary && !nativeZAShiny
+            && result != "PreMadeFile"
             && pkm is PA9 nonNativePa9 && nonNativePa9.Species == template.Species
             && la.EncounterOriginal.Context != nonNativePa9.Context)
         {
@@ -1875,7 +1885,7 @@ public static class Helpers<T> where T : PKM, new()
         // the original set first, then with Level stripped (a too-low level can block native).
         // Only replaces the result when the rebuild is genuinely native (context match), so
         // cross-gen-only species (no Z-A encounter) are left exactly as-is.
-        if (typeof(T) == typeof(PA9) && !isZAWildLegendary && pkm is PA9 stillNonNative
+        if (typeof(T) == typeof(PA9) && !isZAWildLegendary && result != "PreMadeFile" && pkm is PA9 stillNonNative
             && new LegalityAnalysis(stillNonNative).EncounterOriginal.Context != stillNonNative.Context)
         {
             try

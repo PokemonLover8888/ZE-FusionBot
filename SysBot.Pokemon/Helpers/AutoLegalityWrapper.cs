@@ -277,7 +277,11 @@ public static class AutoLegalityWrapper
             {
                 APILegality.GameVersionPriority = GameVersionPriorityType.NativeOnly;
                 var native = sav.GetLegal(template, out res);
-                if (native is PA9 np && np.Species == template.Species && new LegalityAnalysis(np).Valid)
+                // Must match species AND FORM. Without the form check, a form-variant request like
+                // Floette-Eternal (form 5) accepted the NativeOnly wild Floette (form 0) — same
+                // species, legal — and shipped a regular Floette. The form check lets it fall through
+                // to the PriorityOrder pass below, where Z-A makes the correct Eternal Flower (form 5).
+                if (native is PA9 np && np.Species == template.Species && np.Form == template.Form && new LegalityAnalysis(np).Valid)
                     return native;
             }
 

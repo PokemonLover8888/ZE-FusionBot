@@ -717,6 +717,12 @@ public static class QueueHelper<T> where T : PKM, new()
         }
         catch { }
 
+        // Floette-Eternal (species 670, form 5): PokeImg and PokeAPI both map this never-released
+        // form to a WRONG/garbled mon, and the gated creator form-sprite HEAD check is unreliable
+        // bot-side. Force our own hosted flower sprite unconditionally so the embed is always right.
+        if (pk.Species == 670 && pk.Form == 5)
+            embedImageUrl = "https://raw.githubusercontent.com/PokemonLover8888/PKM-Universe-Bot/main/sprites/670-eternal.png";
+
         (int R, int G, int B) = await GetDominantColorAsync(embedImageUrl);
         return (embedImageUrl, new DiscordColor(R, G, B));
     }

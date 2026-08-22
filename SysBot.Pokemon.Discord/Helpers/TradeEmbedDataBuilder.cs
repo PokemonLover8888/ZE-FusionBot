@@ -84,6 +84,10 @@ public static class TradeEmbedDataBuilder
 
     private static string GetHomeSpriteUrl(int species, int form, bool shiny)
     {
+        // Floette-Eternal (species 670, form 5) was never officially released, so PokeAPI's
+        // "eternal" home id (10061) is a wrong/garbled mon. Serve our own hosted flower sprite.
+        if (species == 670 && form == 5)
+            return "https://raw.githubusercontent.com/PokemonLover8888/PKM-Universe-Bot/main/sprites/670-eternal.png";
         string baseUrl = shiny
             ? "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/home/shiny/"
             : "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/home/";

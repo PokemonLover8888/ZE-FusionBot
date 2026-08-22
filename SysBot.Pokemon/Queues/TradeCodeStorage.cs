@@ -13,6 +13,9 @@ public class TradeCodeStorage
     // i.e. the exact existing behavior, so separate WinForms bots are unaffected.
     private static readonly System.Threading.AsyncLocal<string?> DataDir = new();
     public static void SetDataDirectory(string? dir) => DataDir.Value = dir;
+    // The current bot's data folder (set per-bot at MainLoop start). Used by the Discord ChannelLogger
+    // to isolate each bot's logs to its own channel when several bots share one process.
+    public static string? CurrentDataDir => DataDir.Value;
     private static string FileName => string.IsNullOrEmpty(DataDir.Value)
         ? DefaultFileName
         : Path.Combine(DataDir.Value, DefaultFileName);

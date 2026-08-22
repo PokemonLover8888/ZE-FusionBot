@@ -941,7 +941,7 @@ public sealed partial class SysCord<T> where T : PKM, new()
         if (name.Contains("pikachu")) return homeBase + "25.png";
         if (name.Contains("mew") && !name.Contains("mewtwo")) return homeBase + "151.png";
         if (name.Contains("meloetta")) return homeBase + "648.png";
-        if (name.Contains("floette")) return "https://creator.pkm-universe.com/assets/sprites/670-eternal.png";
+        if (name.Contains("floette")) return "https://raw.githubusercontent.com/PokemonLover8888/PKM-Universe-Bot/main/sprites/670-eternal.png";
         if (name.Contains("jirachi")) return homeBase + "385.png";
         if (name.Contains("celebi")) return homeBase + "251.png";
         if (name.Contains("glaceon")) return homeBase + "471.png";
@@ -965,7 +965,7 @@ public sealed partial class SysCord<T> where T : PKM, new()
         const string homeBase = "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/home/";
         if (name.Contains("mew") && !name.Contains("mewtwo")) return homeBase + "151.png";
         if (name.Contains("meloetta")) return homeBase + "648.png";
-        if (name.Contains("floette")) return "https://creator.pkm-universe.com/assets/sprites/670-eternal.png";
+        if (name.Contains("floette")) return "https://raw.githubusercontent.com/PokemonLover8888/PKM-Universe-Bot/main/sprites/670-eternal.png";
         if (name.Contains("jirachi")) return homeBase + "385.png";
         if (name.Contains("celebi")) return homeBase + "251.png";
         if (name.Contains("glaceon")) return homeBase + "471.png";
@@ -1147,8 +1147,9 @@ public sealed partial class SysCord<T> where T : PKM, new()
             await EchoModule.SendQueueStatusEmbedAsync(isFull, currentCount, maxCount).ConfigureAwait(false);
         };
 
-        // Restore Logging
-        LogModule.RestoreLogging(_client, Hub.Config.Discord);
+        // Restore Logging — pass THIS bot's DataFolder so, in a shared multi-tenant process, its logs
+        // only reach its own channel (the ChannelLogger filters by the current bot's AsyncLocal folder).
+        LogModule.RestoreLogging(_client, Hub.Config.Discord, _config.Bots?.FirstOrDefault()?.DataFolder);
         TradeStartModule<T>.RestoreTradeStarting(_client);
 
         // Don't let it load more than once in case of Discord hiccups.

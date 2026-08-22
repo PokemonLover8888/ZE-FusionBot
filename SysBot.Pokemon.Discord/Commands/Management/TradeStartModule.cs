@@ -181,6 +181,11 @@ public class TradeStartModule<T> : ModuleBase<SocketCommandContext> where T : PK
                     }
                 }
                 catch { }
+
+                // Floette-Eternal (form 5): never-released form has no correct PokeImg/PokeAPI
+                // sprite; force our own hosted flower sprite so the embed is always right.
+                if (pk.Species == 670 && pk.Form == 5)
+                    embedImageUrl = "https://raw.githubusercontent.com/PokemonLover8888/PKM-Universe-Bot/main/sprites/670-eternal.png";
             }
 
             int r = 128, g = 128, b = 128;

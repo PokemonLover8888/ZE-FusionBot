@@ -13,12 +13,12 @@ public class LogModule : ModuleBase<SocketCommandContext>
 {
     private static readonly Dictionary<ulong, ChannelLogger> Channels = [];
 
-    public static void RestoreLogging(DiscordSocketClient discord, DiscordSettings settings)
+    public static void RestoreLogging(DiscordSocketClient discord, DiscordSettings settings, string? dataFolder = null)
     {
         foreach (var ch in settings.LoggingChannels)
         {
             if (discord.GetChannel(ch.ID) is ISocketMessageChannel c)
-                AddLogChannel(c, ch.ID);
+                AddLogChannel(c, ch.ID, dataFolder);
         }
 
         LogUtil.LogInfo("Discord", "Added logging to Discord channel(s) on Bot startup.");
@@ -88,9 +88,11 @@ public class LogModule : ModuleBase<SocketCommandContext>
             await ReplyAsync($"{c.Key} - {c.Value}").ConfigureAwait(false);
     }
 
-    private static void AddLogChannel(ISocketMessageChannel c, ulong cid)
+    private static void AddLogChannel(ISocketMessageChannel c, ulong cid, string? dataFolder = null)
     {
-        var logger = new ChannelLogger(cid, c);
+        if (Channels.ContainsKey(cid))
+            return; // already logging to this channel (guards a shared channel across in-process bots)
+        var logger = new ChannelLogger(cid, c, dataFolder);
         LogUtil.Forwarders.Add(logger);
         Channels.Add(cid, logger);
     }
