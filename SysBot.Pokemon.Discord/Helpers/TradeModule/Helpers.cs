@@ -1944,21 +1944,31 @@ public static class Helpers<T> where T : PKM, new()
         // path. Unlike SV, BDSP bots run PKHeX v26.5.6.0 which DOES enforce shiny-locks, so the
         // la.Valid check inside GetLegalNativeDirect rejects an illegal native shiny (shiny-locked
         // mythical) and the transfer is kept — so this is safe for BOTH shiny and non-shiny.
-        if (typeof(T) == typeof(PB8)
-            && pkm is PB8 bdspNonNative && bdspNonNative.Species == template.Species
-            && new LegalityAnalysis(bdspNonNative).EncounterOriginal.Context != bdspNonNative.Context)
+        if (typeof(T) == typeof(PB8) && result != "PreMadeFile"
+            && pkm is PB8 bdspNonNative && bdspNonNative.Species == template.Species)
         {
-            try
+            var bdLa0 = new LegalityAnalysis(bdspNonNative);
+            // Fire when the BDSP build is Non-Native (context mismatch) OR outright INVALID. ALM
+            // defaults a species available in both BDSP and a newer game (e.g. Snorlax/Munchlax,
+            // both Grand-Underground catches) to the newer game's encounter, then can't reconcile
+            // it to a native BDSP one — yielding an EncounterInvalid PB8 that the bot rejects
+            // ("wasn't able to create ... from that set"). The direct NativeOnly path finds the
+            // real BDSP encounter. Only replace when the rebuild is genuinely valid.
+            bool needsNativeRebuild = !bdLa0.Valid || bdLa0.EncounterOriginal.Context != bdspNonNative.Context;
+            if (needsNativeRebuild)
             {
-                var directBd = sav.GetLegalNativeDirect(template);
-                if (directBd is PB8 bdNative)
+                try
                 {
-                    pkm = bdNative;
-                    la = new LegalityAnalysis(pkm);
-                    LogUtil.LogInfo($"[TradeModule] BDSP native safety net: rebuilt {pkm.Species} natively via direct path (was Non-Native), valid={la.Valid}", "Helpers");
+                    var directBd = sav.GetLegalNativeDirect(template);
+                    if (directBd is PB8 bdNative && new LegalityAnalysis(bdNative).Valid)
+                    {
+                        pkm = bdNative;
+                        la = new LegalityAnalysis(pkm);
+                        LogUtil.LogInfo($"[TradeModule] BDSP native safety net: rebuilt {pkm.Species} natively via direct path (was {(bdLa0.Valid ? "Non-Native" : "Invalid")}), valid={la.Valid}", "Helpers");
+                    }
                 }
+                catch (Exception ex) { LogUtil.LogError($"[TradeModule] BDSP native safety net failed: {ex.Message}", "Helpers"); }
             }
-            catch (Exception ex) { LogUtil.LogError($"[TradeModule] BDSP native safety net failed: {ex.Message}", "Helpers"); }
         }
 
         // LA (PA8) native safety net (same mechanism as BDSP). The Lake trio (Uxie/Mesprit/Azelf),
