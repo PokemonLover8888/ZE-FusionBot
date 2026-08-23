@@ -610,6 +610,10 @@ public sealed partial class SysCord<T> where T : PKM, new()
                 // Multi-tenant: bind this bot's config/manager/mode to the async flow.
                 SysCordSettings.SetAmbient(Hub.Config, Manager);
                 BatchCommandNormalizer.SetAmbientMode(_config.Mode);
+                // Point trade-code/trainer-info storage at THIS bot's folder for the read path too
+                // (the trade loop sets it on its side; without this the queue embed reads the shared
+                // cwd file and shows "Trainer Info Not Yet Recorded" even after the member has traded).
+                SysBot.Pokemon.TradeCodeStorage.SetDataDirectory(_config.Bots?.FirstOrDefault()?.DataFolder);
                 if (interaction is SocketMessageComponent component)
                 {
                     await HandleComponentInteractionAsync(component).ConfigureAwait(false);
@@ -1012,6 +1016,10 @@ public sealed partial class SysCord<T> where T : PKM, new()
         // Multi-tenant: bind this bot's config/manager/mode to the async flow.
         SysCordSettings.SetAmbient(Hub.Config, Manager);
         BatchCommandNormalizer.SetAmbientMode(_config.Mode);
+        // Point trade-code/trainer-info storage at THIS bot's folder for the read path too (the trade
+        // loop sets it on its side; without this the queue embed reads the shared cwd file and shows
+        // "Trainer Info Not Yet Recorded" even after the member has traded).
+        SysBot.Pokemon.TradeCodeStorage.SetDataDirectory(_config.Bots?.FirstOrDefault()?.DataFolder);
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
         try
         {
