@@ -2464,15 +2464,22 @@ public static class Helpers<T> where T : PKM, new()
             }
             catch (Exception ex) { LogUtil.LogError($"[TradeModule] Z-A decline move-check failed: {ex.Message}", "Helpers"); }
 
-            string detail = badMoves.Count > 0
-                ? $"These move(s) aren't available on **{spcName}** in Legends: Z-A: **{string.Join(", ", badMoves)}**."
-                : $"This Pokémon — or one of its requested moves, abilities, or ribbons — isn't available in Legends: Z-A.";
-            LogUtil.LogInfo($"[TradeModule] Z-A declined {spcName}: not Z-A-legal (bad moves: {(badMoves.Count > 0 ? string.Join(",", badMoves) : "n/a")})", "Helpers");
-            return Task.FromResult(new ProcessedPokemonResult<T>
+            // Only DECLINE when the request has moves Z-A genuinely can't learn (a wrong-moveset
+            // request we can't fulfil). If the species simply has no Z-A encounter but the moveset
+            // is fine (e.g. shiny Groudon/Kyogre/Rayquaza/Heatran/Mewtwo), SHIP it as a legal
+            // non-native mon — the queue embed adds the "Non-Native / Cannot enter HOME / AutoOT not
+            // applied" notice so the member knows. (Restores the pre-decline behavior members expect.)
+            if (badMoves.Count > 0)
             {
-                Error = $"**{spcName} can't be made as a native Legends: Z-A Pokémon.**\n{detail}\n\nZ-A bots only deliver native, HOME-legal Pokémon — so this request was declined instead of shipping a glitchy non-native copy. Please use a Z-A-legal set, or request this exact Pokémon from a **Scarlet/Violet** or **SwSh** bot instead.",
-                ShowdownSet = set
-            });
+                string detail = $"These move(s) aren't available on **{spcName}** in Legends: Z-A: **{string.Join(", ", badMoves)}**.";
+                LogUtil.LogInfo($"[TradeModule] Z-A declined {spcName}: bad moves {string.Join(",", badMoves)}", "Helpers");
+                return Task.FromResult(new ProcessedPokemonResult<T>
+                {
+                    Error = $"**{spcName} can't be made as requested in Legends: Z-A.**\n{detail}\n\nDrop those move(s) for a Z-A-legal set, or request this exact Pokémon from a **Scarlet/Violet** or **SwSh** bot instead.",
+                    ShowdownSet = set
+                });
+            }
+            LogUtil.LogInfo($"[TradeModule] Z-A shipping Non-Native {spcName} (moveset OK, no Z-A encounter) — embed shows the Non-Native notice.", "Helpers");
         }
 
         // ── SV: DECLINE instead of shipping a Non-Native, tracker-less encounter ──
@@ -2537,7 +2544,10 @@ public static class Helpers<T> where T : PKM, new()
             catch (Exception ex) { LogUtil.LogError($"[TradeModule] native last-chance rebuild failed: {ex.Message}", "Helpers"); }
         }
 
-        if (isNonNative && result != "PreMadeFile"
+        // Z-A bots are exempt from this HOME-origin decline: they SHIP legal non-native mons (e.g.
+        // shiny Groudon/Kyogre/Rayquaza/Heatran/Mewtwo) with the embed's "Non-Native / Cannot enter
+        // HOME" notice instead of redirecting. Every other game still declines + advises the right bot.
+        if (typeof(T) != typeof(PA9) && isNonNative && result != "PreMadeFile"
             && !(pk is IHomeTrack trk && trk.HasTracker)
             && !HomeOriginAdvisor.IsNativeToBot(pk))
         {
