@@ -1115,6 +1115,100 @@ public static class Helpers<T> where T : PKM, new()
         // ============================================================================
 
         // ============================================================================
+        // VIVILLON EVENT FORMS — Fancy (18) & Poké Ball (19)
+        // ============================================================================
+        // These two patterns ONLY ever existed as fixed-OT Mystery Gifts (Summer 2014
+        // Poké Ball = OT "SUM2014", GTS Fancy = OT "GTS"); there is no player-OT source.
+        // ALM can't build them — GetTemplate silently downgrades the requested form to
+        // Meadow (form 6), so a raw "$t Vivillon-Pokeball" ships a plain Meadow Vivillon.
+        // Ship the authentic pre-made event file instead. Only SV (PK9) and Z-A (PA9) can
+        // legally hold these via HOME transfer (SwSh/BDSP reject the form). The file is a
+        // HOME-transferred fateful event with met loc >= 30000, so trade-time ApplyAutoOT
+        // keeps the event OT (it skips fixed-OT Mystery Gifts) and the mon stays legal.
+        // Keyed on the ORIGINAL requested form (set.Form), not the mangled template.Form.
+        if (!isEgg && pkm != null && pkm.Species == (ushort)Species.Vivillon
+            && (set.Form == 18 || set.Form == 19)
+            && (typeof(T) == typeof(PK9) || typeof(T) == typeof(PA9)))
+        {
+            try
+            {
+                var vivFolder = @"C:\Users\ericr\OneDrive\Desktop\HOME-Ready-Files";
+                // Stored as .pk9 (round-trips cleanly); converted to PA9 in-memory for Z-A bots.
+                var vivPat = $"0666-{set.Form:D2} -*.pk9";
+                var vivFiles = Directory.Exists(vivFolder) ? Directory.GetFiles(vivFolder, vivPat) : Array.Empty<string>();
+                LogUtil.LogInfo($"[TradeModule] Vivillon event form {set.Form}: pattern '{vivPat}' matched {vivFiles.Length} file(s)", "Helpers");
+                foreach (var vivFile in vivFiles)
+                {
+                    var vivLoaded = EntityFormat.GetFromBytes(File.ReadAllBytes(vivFile), EntityContext.Gen9);
+                    if (vivLoaded == null || vivLoaded.Species != (ushort)Species.Vivillon)
+                        continue;
+                    PKM? vivFinal = vivLoaded;
+                    if (vivLoaded is not T)
+                    {
+                        // Z-A bot: the file is a PK9, convert PK9 -> PA9 in-memory.
+                        vivFinal = EntityConverter.ConvertToType(vivLoaded, typeof(T), out var vivConvRes);
+                        if (vivFinal == null)
+                        {
+                            LogUtil.LogInfo($"[TradeModule] Vivillon pre-made {Path.GetFileName(vivFile)} convert to {typeof(T).Name} failed: {vivConvRes}", "Helpers");
+                            continue;
+                        }
+                    }
+                    vivFinal.RefreshChecksum();
+                    if (vivFinal is T vivT && new LegalityAnalysis(vivFinal).Valid)
+                    {
+                        pkm = vivT;
+                        result = "PreMadeFile";
+                        LogUtil.LogInfo($"[TradeModule] Vivillon event form {set.Form}: shipped pre-made {Path.GetFileName(vivFile)} (OT {vivT.OriginalTrainerName}) as {typeof(T).Name}", "Helpers");
+                        break;
+                    }
+                    LogUtil.LogInfo($"[TradeModule] Vivillon pre-made {Path.GetFileName(vivFile)} failed legality as {typeof(T).Name}", "Helpers");
+                }
+            }
+            catch (Exception vivEx) { LogUtil.LogError($"[TradeModule] Vivillon event pre-made load failed: {vivEx.Message}", "Helpers"); }
+        }
+
+        // ============================================================================
+        // EVENT MOVESET RESTORATION
+        // ============================================================================
+        // When a mon matches an event card (Mystery Gift) and the user did NOT specify a
+        // moveset, ALM fills generic level-up moves instead of the card's authentic moves.
+        // e.g. a bare "$t Volcanion Shiny: Yes" (HOME event) shipped Leer/Mist/Flash Cannon/
+        // Heat Crash instead of Steam Eruption/Flare Blitz/Hydro Pump/Heavy Slam.
+        // Re-legalize with the card's own moves so event mons ship authentically. Skipped
+        // for pre-made files (their moves are already authentic) and when the user chose
+        // their own moves. Only applied when it produces a VALID mon carrying EXACTLY the
+        // card's moves — otherwise the original (still-valid) mon is kept, so it can't break.
+        bool userSpecifiedMoves = (set.Moves ?? Array.Empty<ushort>()).Any(m => m != 0);
+        if (!isEgg && result != "PreMadeFile" && pkm != null && !userSpecifiedMoves)
+        {
+            try
+            {
+                var evEnc = new LegalityAnalysis(pkm).EncounterMatch;
+                if (evEnc is MysteryGift && evEnc is IMoveset evMoveset && evMoveset.Moves.Move1 != 0)
+                {
+                    var cardMoves = evMoveset.Moves;
+                    var moveLines = new[] { cardMoves.Move1, cardMoves.Move2, cardMoves.Move3, cardMoves.Move4 }
+                        .Where(m => m != 0)
+                        .Select(m => "- " + GameInfo.Strings.Move[m]);
+                    var withMoves = contentWithoutLanguage + "\n" + string.Join("\n", moveLines);
+                    var reTemplate = AutoLegalityWrapper.GetTemplate(new ShowdownSet(withMoves));
+                    var rePkm = sav.GetLegalForTrade(reTemplate, out _);
+                    if (rePkm is T reTyped && new LegalityAnalysis(rePkm).Valid)
+                    {
+                        var want = new[] { cardMoves.Move1, cardMoves.Move2, cardMoves.Move3, cardMoves.Move4 }.OrderBy(x => x);
+                        var got = new[] { rePkm.Move1, rePkm.Move2, rePkm.Move3, rePkm.Move4 }.OrderBy(x => x);
+                        if (want.SequenceEqual(got))
+                        {
+                            pkm = reTyped;
+                            LogUtil.LogInfo($"[TradeModule] Restored event-card moveset for {(Species)pkm.Species}", "Helpers");
+                        }
+                    }
+                }
+            }
+            catch (Exception exMv) { LogUtil.LogError($"[TradeModule] Event moveset restoration failed: {exMv.Message}", "Helpers"); }
+        }
+
+        // ============================================================================
         // FORM CORRECTION FOR COSMETIC AND REGIONAL FORMS (e.g., Vivillon patterns)
         // ============================================================================
         // ALM's GetLegal generates the Pokemon in its encounter-default form, which for
